@@ -31,10 +31,21 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
       Log migraine now
     </button>
+  </div>
+
+  <ul class="list" id="list"></ul>
+
+  <p class="empty" id="empty" hidden>
+    No entries yet.<br>
+    Tap <strong>Log migraine now</strong> when one starts &mdash; you can add triggers,
+    intensity and notes afterward.
+  </p>
+
+  <!-- Backdating is a set-up task, so it sits below the log rather than above it -->
+  <div class="actions actions-late">
     <button type="button" id="addOther" class="btn btn-ghost" aria-expanded="false" aria-controls="newForm">Add a past entry</button>
   </div>
 
-  <!-- New-entry form, revealed by "Add a past entry" -->
   <form class="card editor" id="newForm" hidden>
     <h2 class="editor-title">New entry</h2>
     <label for="newAt">Date &amp; time</label>
@@ -55,18 +66,17 @@
     </div>
   </form>
 
-  <ul class="list" id="list"></ul>
-
-  <p class="empty" id="empty" hidden>
-    No entries yet.<br>
-    Tap <strong>Log migraine now</strong> when one starts &mdash; you can add triggers,
-    intensity and notes afterward.
-  </p>
+  <section class="panel">
+    <details id="statsBox">
+      <summary>Statistics<span class="panel-status" id="statsStatus"></span></summary>
+      <div id="stats" class="stats"></div>
+    </details>
+  </section>
 </main>
 
 <footer class="footer">
   <details>
-    <summary>Backup &amp; data<span class="backup-status" id="backupStatus"></span></summary>
+    <summary>Backup &amp; data<span class="panel-status" id="backupStatus"></span></summary>
     <p class="note">
       Entries are stored only on this device, in this browser. Nothing is uploaded anywhere.
       Export a backup now and then so you don't lose your history.

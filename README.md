@@ -11,6 +11,8 @@ stays editable forever.
 - **Intensity afterwards** — you don't know how bad it was until it's over, so
   it's never asked for up front.
 - **Any time, any date** — backdate an entry, or correct the time later.
+- **Statistics** — frequency by month, your most common triggers and an
+  intensity breakdown, from the entries you already have.
 - **Works offline** — once installed it opens with no network at all.
 - **Private** — entries live in your browser's `localStorage` on that device.
   Nothing is uploaded, there is no account, and there is no server to trust.
@@ -82,6 +84,71 @@ you ever switch.
 
 It then launches full-screen with its own icon, like any other app.
 
+## Layout
+
+The page is ordered by how often you need each part:
+
+1. **Log migraine now** — the only thing that matters mid-attack, so it is
+   first and is a single tap.
+2. **The log itself** — newest first. Tap any entry to edit it.
+3. **Add a past entry** — backfilling old attacks is a one-off setup task, so
+   it sits *below* the log rather than competing with the button you press
+   during an attack. It becomes redundant once your history is in.
+4. **Statistics** and **Backup & data** — collapsed panels at the bottom.
+
+### Statistics
+
+Collapsed by default, with the useful headline in the summary line
+(`Statistics — last one 6 days ago`). Opening it shows four blocks:
+
+| Block | Shows |
+| --- | --- |
+| Overview | How many logged, how long since the last one, typical gap between attacks, date first logged |
+| Last six months | A count per month, as a bar |
+| Most common triggers | Your triggers ranked by frequency, top eight |
+| Intensity | Mild / Moderate / Severe counts, plus how many are unrated, in the severity colours |
+
+Like the header counts, statistics describe **what has happened** — entries
+dated in the future are excluded. "Typical gap" is the mean interval between
+consecutive attacks and needs at least two entries, so it is omitted for a
+single one. It is a plain average, not a prediction.
+
+There is deliberately no trigger-correlation analysis. With a few dozen
+entries, naive correlation reliably invents patterns that are not there, and a
+health diary that fabricates triggers is worse than one that just shows you
+the data.
+
+## What the header counts
+
+Both totals count only entries that have actually happened — anything dated in
+the future is excluded from each. If an entry is future-dated (usually a
+mistyped date) the header says so explicitly, e.g.
+`0 entries this month — 0 in the last 90 days · 1 dated in the future`, so a
+typo cannot quietly disappear from the counts while its card sits in the list.
+
+## Triggers and intensity
+
+The built-in trigger list is the twelve most commonly reported ones:
+
+> Stress · Poor sleep · Skipped meal · Dehydration · Alcohol · Caffeine ·
+> Hormonal · Bright light · Strong smell · Weather · Screen time · Neck tension
+
+Twelve is roughly the limit of what anyone will read while recovering from an
+attack, so the list is deliberately short. **+ Add your own** takes up to six
+more (`MAX_CUSTOM_TRIGGERS` in `app.js`), kept in `migraine-log-triggers-v1`.
+Anything that doesn't fit belongs in the notes.
+
+Removing one of your own triggers only stops it being offered — entries that
+already carry that label keep it, and it reappears as a chip whenever such an
+entry is open. Deleting a trigger never rewrites history.
+
+Intensity is **Mild / Moderate / Severe**, single-choice, and tapping the
+current one clears it. It is intentionally absent from the one-tap path.
+
+To change either list, edit `BUILT_IN_TRIGGERS` or `INTENSITIES` at the top of
+`app.js`. Entries store trigger labels as plain strings, so renaming a built-in
+does not affect entries already saved with the old label.
+
 ## Backups matter
 
 Because the data lives only in the browser, it goes away if you delete the app,
@@ -110,37 +177,6 @@ backup file you already saved — a web page has no way to edit a file on disk.
 So if you import an older backup, anything you deleted since then comes back;
 delete it again. In practice this only bites with throwaway test entries, which
 are easy to spot and remove.
-
-### What the header counts
-
-Both totals count only entries that have actually happened — anything dated in
-the future is excluded from each. If an entry is future-dated (usually a
-mistyped date) the header says so explicitly, e.g.
-`0 entries this month — 0 in the last 90 days · 1 dated in the future`, so a
-typo cannot quietly disappear from the counts while its card sits in the list.
-
-### Triggers and intensity
-
-The built-in trigger list is the twelve most commonly reported ones:
-
-> Stress · Poor sleep · Skipped meal · Dehydration · Alcohol · Caffeine ·
-> Hormonal · Bright light · Strong smell · Weather · Screen time · Neck tension
-
-Twelve is roughly the limit of what anyone will read while recovering from an
-attack, so the list is deliberately short. **+ Add your own** takes up to six
-more (`MAX_CUSTOM_TRIGGERS` in `app.js`), kept in `migraine-log-triggers-v1`.
-Anything that doesn't fit belongs in the notes.
-
-Removing one of your own triggers only stops it being offered — entries that
-already carry that label keep it, and it reappears as a chip whenever such an
-entry is open. Deleting a trigger never rewrites history.
-
-Intensity is **Mild / Moderate / Severe**, single-choice, and tapping the
-current one clears it. It is intentionally absent from the one-tap path.
-
-To change either list, edit `BUILT_IN_TRIGGERS` or `INTENSITIES` at the top of
-`app.js`. Entries store trigger labels as plain strings, so renaming a built-in
-does not affect entries already saved with the old label.
 
 ### Backup file format
 

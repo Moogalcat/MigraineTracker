@@ -148,6 +148,8 @@ const timeFmt = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2
 const dateFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 const dateFmtYear = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 const shortFmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' });
+const monthFmt = new Intl.DateTimeFormat(undefined, { month: 'short' });
+const fullFmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 
 function midnight(d) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -215,6 +217,7 @@ function render() {
 
   $('empty').hidden = entries.length > 0;
   renderTally();
+  renderStats();
   renderBackupStatus();
 }
 
@@ -287,6 +290,173 @@ function renderBackupStatus() {
   const days = daysAgo(d);
   const when = days === 0 ? 'today' : days === 1 ? 'yesterday' : shortFmt.format(d);
   el.textContent = ` — export started ${when}`;
+}
+
+/* ---- Statistics -------------------------------------------------------- */
+
+// Stats describe what has happened, so future-dated entries are left out -
+// the same rule the header tally uses.
+function happenedEntries() {
+  const now = Date.now();
+  return entries.filter((e) => Date.parse(e.at) <= now);
+}
+
+function statRow(label, value, fraction, colourVar) {
+  const row = document.createElement('div');
+  row.className = 'stat-row';
+
+  const name = document.createElement('span');
+  name.className = 'stat-label';
+  name.textContent = label;                 // user-supplied trigger names: text only
+
+  const track = document.createElement('span');
+  track.className = 'stat-track';
+  const bar = document.createElement('span');
+  bar.className = 'stat-bar';
+  bar.style.width = `${Math.round(fraction * 100)}%`;
+  if (colourVar) bar.style.background = `var(${colourVar})`;
+  track.appendChild(bar);
+
+  const count = document.createElement('span');
+  count.className = 'stat-count';
+  count.textContent = value;
+
+  row.append(name, track, count);
+  return row;
+}
+
+function statBlock(title) {
+  const box = document.createElement('section');
+  box.className = 'stat-block';
+  const h = document.createElement('h3');
+  h.textContent = title;
+  box.appendChild(h);
+  return box;
+}
+
+function statFacts(facts) {
+  const dl = document.createElement('dl');
+  dl.className = 'stat-facts';
+  for (const [term, value] of facts) {
+    const dt = document.createElement('dt');
+    dt.textContent = term;
+    const dd = document.createElement('dd');
+    dd.textContent = value;
+    dl.append(dt, dd);
+  }
+  return dl;
+}
+
+function monthlyCounts(list, months = 6) {
+  const now = new Date();
+  const out = [];
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const count = list.filter((e) => {
+      const x = new Date(e.at);
+      return x.getFullYear() === d.getFullYear() && x.getMonth() === d.getMonth();
+    }).length;
+    out.push({ label: monthFmt.format(d), count });
+  }
+  return out;
+}
+
+function triggerCounts(list) {
+  const tally = new Map();
+  for (const e of list) {
+    for (const t of e.triggers) tally.set(t, (tally.get(t) || 0) + 1);
+  }
+  return [...tally.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+
+function renderStats() {
+  const box = $('stats');
+  const status = $('statsStatus');
+  if (!box) return;
+
+  const list = happenedEntries();
+  box.textContent = '';
+
+  if (!list.length) {
+    if (status) status.textContent = '';
+    const p = document.createElement('p');
+    p.className = 'note';
+    p.textContent = entries.length
+      ? 'Nothing to summarise yet — every entry is dated in the future.'
+      : 'Statistics appear once you have logged an attack.';
+    box.appendChild(p);
+    return;
+  }
+
+  const times = list.map((e) => Date.parse(e.at)).sort((a, b) => a - b);
+  const first = times[0];
+  const last = times[times.length - 1];
+  const sinceLast = daysAgo(new Date(last));
+
+  const sinceText = sinceLast === 0 ? 'today'
+    : sinceLast === 1 ? 'yesterday'
+    : `${sinceLast} days ago`;
+  if (status) status.textContent = ` — last one ${sinceText}`;
+
+  // --- Overview ---------------------------------------------------------
+  const facts = [
+    ['Logged', `${list.length} ${list.length === 1 ? 'attack' : 'attacks'}`],
+    ['Most recent', sinceText],
+  ];
+  if (list.length >= 2) {
+    const gap = (last - first) / (list.length - 1) / 86400000;
+    facts.push(['Typical gap', gap < 1
+      ? 'under a day'
+      : `about ${Math.round(gap) === 1 ? 'a day' : `${Math.round(gap)} days`}`]);
+  }
+  facts.push(['First logged', fullFmt.format(new Date(first))]);
+
+  const overview = statBlock('Overview');
+  overview.appendChild(statFacts(facts));
+  box.appendChild(overview);
+
+  // --- By month ---------------------------------------------------------
+  const months = monthlyCounts(list);
+  const monthPeak = Math.max(...months.map((m) => m.count), 1);
+  const byMonth = statBlock('Last six months');
+  for (const m of months) {
+    byMonth.appendChild(statRow(m.label, String(m.count), m.count / monthPeak));
+  }
+  box.appendChild(byMonth);
+
+  // --- Triggers ---------------------------------------------------------
+  const triggers = triggerCounts(list);
+  const byTrigger = statBlock('Most common triggers');
+  if (triggers.length) {
+    const peak = triggers[0][1];
+    for (const [label, count] of triggers.slice(0, 8)) {
+      byTrigger.appendChild(statRow(label, String(count), count / peak));
+    }
+  } else {
+    const p = document.createElement('p');
+    p.className = 'note';
+    p.textContent = 'No triggers recorded yet.';
+    byTrigger.appendChild(p);
+  }
+  box.appendChild(byTrigger);
+
+  // --- Intensity --------------------------------------------------------
+  const counts = INTENSITIES.map((level) => [
+    level, list.filter((e) => e.intensity === level).length,
+  ]);
+  const unrated = list.filter((e) => !e.intensity).length;
+  const intensityPeak = Math.max(...counts.map(([, n]) => n), unrated, 1);
+
+  const byIntensity = statBlock('Intensity');
+  for (const [level, n] of counts) {
+    byIntensity.appendChild(
+      statRow(level, String(n), n / intensityPeak, `--${level.toLowerCase()}`)
+    );
+  }
+  if (unrated) {
+    byIntensity.appendChild(statRow('Not rated', String(unrated), unrated / intensityPeak, '--line-strong'));
+  }
+  box.appendChild(byIntensity);
 }
 
 /* ---- Trigger and intensity chips --------------------------------------- */
