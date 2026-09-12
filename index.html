@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Migraine Log</title>
+<meta name="description" content="A simple, private log for migraine attacks. Works offline.">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#f6f4fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#140d22" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Migraine Log">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <h1>Migraine Log</h1>
+  <p class="tally" id="tally"></p>
+</header>
+
+<main>
+  <div class="actions">
+    <button type="button" id="logNow" class="btn btn-primary">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v4m0 12v4M2 12h4m12 0h4M4.9 4.9l2.9 2.9m8.4 8.4l2.9 2.9m0-14.2l-2.9 2.9M7.8 16.2l-2.9 2.9"/><circle cx="12" cy="12" r="3.2"/></svg>
+      Log migraine now
+    </button>
+    <button type="button" id="addOther" class="btn btn-ghost">Add another time&hellip;</button>
+  </div>
+
+  <!-- New-entry form, revealed by "Add another time" -->
+  <form class="card editor" id="newForm" hidden>
+    <h2 class="editor-title">New entry</h2>
+    <label for="newAt">Date &amp; time</label>
+    <input type="datetime-local" id="newAt" required>
+    <label for="newNotes">Notes</label>
+    <textarea id="newNotes" rows="4" placeholder="Symptoms, triggers, medication, how long it lasted&hellip;"></textarea>
+    <div class="row">
+      <button type="submit" class="btn btn-primary btn-sm">Save entry</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="newCancel">Cancel</button>
+    </div>
+  </form>
+
+  <ul class="list" id="list"></ul>
+
+  <p class="empty" id="empty" hidden>
+    No entries yet.<br>
+    Tap <strong>Log migraine now</strong> when one starts &mdash; you can edit the time and add notes later.
+  </p>
+</main>
+
+<footer class="footer">
+  <details>
+    <summary>Backup &amp; data<span class="backup-status" id="backupStatus"></span></summary>
+    <p class="note">
+      Entries are stored only on this device, in this browser. Nothing is uploaded anywhere.
+      Export a backup now and then so you don't lose your history &mdash; the app can't
+      update a file you've already saved, so export again after making changes.
+      Deleted entries stay deleted: importing an older backup won't bring them back.
+    </p>
+    <div class="row">
+      <button type="button" class="btn btn-ghost btn-sm" id="exportBtn">Export backup</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="importBtn">Import backup</button>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
+    </div>
+  </details>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<template id="entryTpl">
+  <li class="card entry">
+    <button type="button" class="entry-head" data-act="toggle">
+      <span class="entry-when"></span>
+      <span class="entry-notes"></span>
+      <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+    <div class="entry-body" hidden>
+      <label>Date &amp; time</label>
+      <input type="datetime-local" data-field="at" required>
+      <label>Notes</label>
+      <textarea data-field="notes" rows="4" placeholder="Symptoms, triggers, medication, how long it lasted&hellip;"></textarea>
+      <div class="row">
+        <button type="button" class="btn btn-primary btn-sm" data-act="save">Save</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-act="cancel">Cancel</button>
+        <button type="button" class="btn btn-danger btn-sm" data-act="delete">Delete</button>
+      </div>
+    </div>
+  </li>
+</template>
+
+<script src="app.js"></script>
+</body>
+</html>
