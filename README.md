@@ -1,10 +1,15 @@
 # Migraine Log
 
 A small installable web app (PWA) for logging migraine attacks. Each entry is a
-date + time and a free-text note. Both stay editable forever.
+date + time, optional triggers and intensity, and a free-text note. All of it
+stays editable forever.
 
-- **One tap to log** — "Log migraine now" stamps the current time immediately;
-  add notes whenever you feel up to it.
+- **One tap to log** — "Log migraine now" stamps the current time immediately
+  and asks nothing else; fill in the rest whenever you feel up to it.
+- **Triggers you tap, not type** — twelve common ones built in, plus up to six
+  of your own.
+- **Intensity afterwards** — you don't know how bad it was until it's over, so
+  it's never asked for up front.
 - **Any time, any date** — backdate an entry, or correct the time later.
 - **Works offline** — once installed it opens with no network at all.
 - **Private** — entries live in your browser's `localStorage` on that device.
@@ -102,19 +107,50 @@ So if you import an older backup, anything you deleted since then comes back;
 delete it again. In practice this only bites with throwaway test entries, which
 are easy to spot and remove.
 
+### Triggers and intensity
+
+The built-in trigger list is the twelve most commonly reported ones:
+
+> Stress · Poor sleep · Skipped meal · Dehydration · Alcohol · Caffeine ·
+> Hormonal · Bright light · Strong smell · Weather · Screen time · Neck tension
+
+Twelve is roughly the limit of what anyone will read while recovering from an
+attack, so the list is deliberately short. **+ Add your own** takes up to six
+more (`MAX_CUSTOM_TRIGGERS` in `app.js`), kept in `migraine-log-triggers-v1`.
+Anything that doesn't fit belongs in the notes.
+
+Removing one of your own triggers only stops it being offered — entries that
+already carry that label keep it, and it reappears as a chip whenever such an
+entry is open. Deleting a trigger never rewrites history.
+
+Intensity is **Mild / Moderate / Severe**, single-choice, and tapping the
+current one clears it. It is intentionally absent from the one-tap path.
+
+To change either list, edit `BUILT_IN_TRIGGERS` or `INTENSITIES` at the top of
+`app.js`. Entries store trigger labels as plain strings, so renaming a built-in
+does not affect entries already saved with the old label.
+
 ### Backup file format
 
 A backup is a plain JSON array, easy to read or hand-edit:
 
 ```json
 [
-  { "id": "mty9eksz6g7525", "at": "2026-09-09T12:30:00.000Z", "notes": "..." }
+  {
+    "id": "mty9eksz6g7525",
+    "at": "2026-09-09T12:30:00.000Z",
+    "triggers": ["Stress", "Poor sleep"],
+    "intensity": "Severe",
+    "notes": "..."
+  }
 ]
 ```
 
 `at` is always UTC; the app converts to local time for display. `id` is
 regenerated on import, so you can safely delete or duplicate entries in the file
-by hand. An object of the form `{ "entries": [...] }` is also accepted.
+by hand. An object of the form `{ "entries": [...] }` is also accepted, and
+older backups without `triggers` or `intensity` import fine — they come in with
+no triggers and no intensity set.
 
 ## Changing the app
 
