@@ -97,15 +97,27 @@ with an existing name just gets ` (1)` appended. So your Downloads folder
 accumulates snapshots. The names sort chronologically, so the newest one is
 always the last in the list, and that is the one to keep and to import.
 
-The **Backup & data** heading tells you when your newest export is out of date:
+The **Backup & data** heading tells you when your latest export attempt is out of date:
 it shows how many changes you've made since the last one, or when it happened.
 Exporting again clears it.
+
+Browsers do not tell a page whether you ultimately kept or cancelled a
+download. For that reason the app says **export started** and asks you to check
+your Downloads folder; it does not claim that the file was saved successfully.
 
 Deleting an entry removes it from the app immediately, but it cannot change a
 backup file you already saved — a web page has no way to edit a file on disk.
 So if you import an older backup, anything you deleted since then comes back;
 delete it again. In practice this only bites with throwaway test entries, which
 are easy to spot and remove.
+
+### What the header counts
+
+Both totals count only entries that have actually happened — anything dated in
+the future is excluded from each. If an entry is future-dated (usually a
+mistyped date) the header says so explicitly, e.g.
+`0 entries this month — 0 in the last 90 days · 1 dated in the future`, so a
+typo cannot quietly disappear from the counts while its card sits in the list.
 
 ### Triggers and intensity
 
@@ -151,6 +163,34 @@ regenerated on import, so you can safely delete or duplicate entries in the file
 by hand. An object of the form `{ "entries": [...] }` is also accepted, and
 older backups without `triggers` or `intensity` import fine — they come in with
 no triggers and no intensity set.
+
+After an import, the confirmation reports imported entries, exact duplicates,
+and invalid records separately. A damaged record is never silently treated as
+successfully imported.
+
+## Reliability and accessibility
+
+Storage writes are checked before the interface reports an entry as logged,
+saved, deleted, or imported. If browser storage is full or blocked, the app
+keeps the previous on-screen and stored state and shows an error instead of a
+false success message. Entry data and the backup reminder are stored
+separately; if only the reminder fails, the message says so explicitly.
+
+Trigger and intensity choices are labelled as control groups, repeated entry
+fields receive unique accessible labels, and expandable rows expose their open
+or closed state. Interactive targets are at least 44 pixels high for easier use
+on a phone and during an attack.
+
+## Visual design
+
+The interface uses a quiet logbook vocabulary: warm paper tones in light mode,
+near-black neutral tones in dark mode, restrained terracotta accents, ruled
+entry rows, and a serif title. Pills, gradients, and stacked floating cards are
+deliberately avoided. Severity appears as a small edge marker rather than a
+large coloured surface, keeping the screen calm for light-sensitive users.
+
+The app icon follows the same system: a simple paper log, accent spine, and
+three written lines. `tools/make-icons.ps1` is the source for all icon sizes.
 
 ## Changing the app
 

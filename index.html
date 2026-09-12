@@ -7,8 +7,8 @@
 <meta name="description" content="A simple, private log for migraine attacks. Works offline.">
 <meta name="robots" content="noindex, nofollow">
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#f6f4fb" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#140d22" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f3f0e9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111416" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Migraine Log">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -18,28 +18,35 @@
 <body>
 
 <header class="topbar">
-  <h1>Migraine Log</h1>
-  <p class="tally" id="tally"></p>
+  <div>
+    <p class="kicker">Personal record</p>
+    <h1>Migraine Log</h1>
+  </div>
+  <p class="tally" id="tally" aria-live="polite"></p>
 </header>
 
 <main>
   <div class="actions">
     <button type="button" id="logNow" class="btn btn-primary">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v4m0 12v4M2 12h4m12 0h4M4.9 4.9l2.9 2.9m8.4 8.4l2.9 2.9m0-14.2l-2.9 2.9M7.8 16.2l-2.9 2.9"/><circle cx="12" cy="12" r="3.2"/></svg>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
       Log migraine now
     </button>
-    <button type="button" id="addOther" class="btn btn-ghost">Add another time&hellip;</button>
+    <button type="button" id="addOther" class="btn btn-ghost" aria-expanded="false" aria-controls="newForm">Add a past entry</button>
   </div>
 
-  <!-- New-entry form, revealed by "Add another time" -->
+  <!-- New-entry form, revealed by "Add a past entry" -->
   <form class="card editor" id="newForm" hidden>
     <h2 class="editor-title">New entry</h2>
     <label for="newAt">Date &amp; time</label>
     <input type="datetime-local" id="newAt" required>
-    <label>Triggers</label>
-    <div class="chips" data-chips="triggers"></div>
-    <label>Intensity <span class="hint">once it has passed</span></label>
-    <div class="chips" data-chips="intensity"></div>
+    <fieldset class="control-group">
+      <legend>Triggers</legend>
+      <div class="chips" data-chips="triggers"></div>
+    </fieldset>
+    <fieldset class="control-group intensity-group">
+      <legend>Intensity <span class="hint">afterward</span></legend>
+      <div class="chips" data-chips="intensity"></div>
+    </fieldset>
     <label for="newNotes">Notes</label>
     <textarea id="newNotes" rows="3" placeholder="Anything else worth remembering&hellip;"></textarea>
     <div class="row">
@@ -53,7 +60,7 @@
   <p class="empty" id="empty" hidden>
     No entries yet.<br>
     Tap <strong>Log migraine now</strong> when one starts &mdash; you can add triggers,
-    intensity and notes afterwards, once it has passed.
+    intensity and notes afterward.
   </p>
 </main>
 
@@ -85,13 +92,17 @@
       <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
     </button>
     <div class="entry-body" hidden>
-      <label>Date &amp; time</label>
+      <label class="entry-at-label">Date &amp; time</label>
       <input type="datetime-local" data-field="at" required>
-      <label>Triggers</label>
-      <div class="chips" data-chips="triggers"></div>
-      <label>Intensity <span class="hint">once it has passed</span></label>
-      <div class="chips" data-chips="intensity"></div>
-      <label>Notes</label>
+      <fieldset class="control-group">
+        <legend>Triggers</legend>
+        <div class="chips" data-chips="triggers"></div>
+      </fieldset>
+      <fieldset class="control-group intensity-group">
+        <legend>Intensity <span class="hint">afterward</span></legend>
+        <div class="chips" data-chips="intensity"></div>
+      </fieldset>
+      <label class="entry-notes-label">Notes</label>
       <textarea data-field="notes" rows="3" placeholder="Anything else worth remembering&hellip;"></textarea>
       <div class="row">
         <button type="button" class="btn btn-primary btn-sm" data-act="save">Save</button>

@@ -41,9 +41,10 @@ function readJSON(key, fallback) {
 function writeJSON(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    return true;
   } catch (err) {
     console.error(err);
-    toast('Could not save — device storage is full or blocked');
+    return false;
   }
 }
 
@@ -89,16 +90,26 @@ function valid(e) {
   return e && typeof e === 'object' && typeof e.at === 'string' && !isNaN(Date.parse(e.at));
 }
 
-function save() {
-  entries.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
-  writeJSON(KEY, entries);
+function persistEntries(nextEntries) {
+  const sorted = [...nextEntries].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  if (!writeJSON(KEY, sorted)) return false;
+  entries = sorted;
+  return true;
 }
 
 // Call after any edit, so the backup status can flag a stale export file.
 function markChanged(n = 1) {
-  meta.pending += n;
-  writeJSON(META_KEY, meta);
+  const nextMeta = { ...meta, pending: meta.pending + n };
+  if (!writeJSON(META_KEY, nextMeta)) return false;
+  meta = nextMeta;
   renderBackupStatus();
+  return true;
+}
+
+function finishChange(message, count = 1) {
+  const reminderSaved = markChanged(count);
+  render();
+  toast(reminderSaved ? message : `${message}, but the backup reminder could not be saved`);
 }
 
 function uid() {
@@ -167,21 +178,37 @@ function render() {
   );
 
   list.textContent = '';
-  for (const entry of entries) {
+  for (const [index, entry] of entries.entries()) {
     const li = tpl.content.firstElementChild.cloneNode(true);
     const date = new Date(entry.at);
+    const head = li.querySelector('.entry-head');
+    const body = li.querySelector('.entry-body');
+    const atInput = li.querySelector('[data-field="at"]');
+    const notesInput = li.querySelector('[data-field="notes"]');
+    const bodyId = `entry-body-${index}`;
+    const atId = `entry-at-${index}`;
+    const notesId = `entry-notes-${index}`;
 
     li.dataset.id = entry.id;
+    if (entry.intensity) li.classList.add(`severity-${entry.intensity.toLowerCase()}`);
+    head.setAttribute('aria-expanded', 'false');
+    head.setAttribute('aria-controls', bodyId);
+    body.id = bodyId;
+    atInput.id = atId;
+    notesInput.id = notesId;
+    li.querySelector('.entry-at-label').htmlFor = atId;
+    li.querySelector('.entry-notes-label').htmlFor = notesId;
     li.querySelector('.entry-when').textContent = describe(date);
     li.querySelector('.entry-notes').textContent = entry.notes.trim();
-    li.querySelector('[data-field="at"]').value = toInput(date);
-    li.querySelector('[data-field="notes"]').value = entry.notes;
+    atInput.value = toInput(date);
+    notesInput.value = entry.notes;
     renderEntryMeta(li.querySelector('.entry-meta'), entry);
     fillChips(li, entry);
 
     if (openIds.has(entry.id)) {
       li.classList.add('open');
-      li.querySelector('.entry-body').hidden = false;
+      head.setAttribute('aria-expanded', 'true');
+      body.hidden = false;
     }
     list.appendChild(li);
   }
@@ -214,16 +241,28 @@ function renderTally() {
   if (!entries.length) { el.textContent = ''; return; }
 
   const now = new Date();
-  const thisMonth = entries.filter((e) => {
+
+  // Both counts use the same rule: only what has actually happened. Counting a
+  // future date in one total but not the other made the two disagree.
+  const happened = entries.filter((e) => Date.parse(e.at) <= now.getTime());
+  const future = entries.length - happened.length;
+
+  const thisMonth = happened.filter((e) => {
     const d = new Date(e.at);
     return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
   }).length;
-  const last90 = entries.filter(
+  const last90 = happened.filter(
     (e) => now.getTime() - Date.parse(e.at) <= 90 * 86400000
   ).length;
 
   const label = thisMonth === 1 ? '1 entry' : `${thisMonth} entries`;
-  el.textContent = `${label} this month — ${last90} in the last 90 days`;
+  let text = `${label} this month — ${last90} in the last 90 days`;
+
+  // Say so rather than letting a mistyped date silently vanish from both.
+  if (future) {
+    text += ` · ${future} dated in the future`;
+  }
+  el.textContent = text;
 }
 
 // Shows at a glance whether the backup file on disk is out of date. The app
@@ -247,7 +286,7 @@ function renderBackupStatus() {
   const d = new Date(meta.lastExportAt);
   const days = daysAgo(d);
   const when = days === 0 ? 'today' : days === 1 ? 'yesterday' : shortFmt.format(d);
-  el.textContent = ` — backup exported ${when}`;
+  el.textContent = ` — export started ${when}`;
 }
 
 /* ---- Trigger and intensity chips --------------------------------------- */
@@ -339,8 +378,12 @@ function addCustomTrigger(row) {
     return;
   }
 
-  customTriggers.push(label);
-  writeJSON(CUSTOM_KEY, customTriggers);
+  const nextTriggers = [...customTriggers, label];
+  if (!writeJSON(CUSTOM_KEY, nextTriggers)) {
+    toast('Could not save the trigger — device storage is full or blocked');
+    return;
+  }
+  customTriggers = nextTriggers;
   refreshAllTriggerRows();
 
   // Select it straight away in the row it was added from.
@@ -349,8 +392,12 @@ function addCustomTrigger(row) {
 }
 
 function removeCustomTrigger(label) {
-  customTriggers = customTriggers.filter((t) => t !== label);
-  writeJSON(CUSTOM_KEY, customTriggers);
+  const nextTriggers = customTriggers.filter((t) => t !== label);
+  if (!writeJSON(CUSTOM_KEY, nextTriggers)) {
+    toast('Could not remove the trigger — device storage is full or blocked');
+    return;
+  }
+  customTriggers = nextTriggers;
   refreshAllTriggerRows();
   toast(`"${label}" removed from your list`);
 }
@@ -401,6 +448,7 @@ list.addEventListener('click', (ev) => {
   switch (btn.dataset.act) {
     case 'toggle': {
       const open = li.classList.toggle('open');
+      btn.setAttribute('aria-expanded', String(open));
       body.hidden = !open;
       if (open) {
         // Start from the stored values every time it opens.
@@ -418,31 +466,37 @@ list.addEventListener('click', (ev) => {
         atInput.focus();
         return;
       }
-      entry.at = date.toISOString();
-      entry.notes = notesInput.value;
-      entry.triggers = readChips(li, 'triggers');
-      entry.intensity = readChips(li, 'intensity')[0] || null;
-      save();
-      markChanged();
+      const updated = {
+        ...entry,
+        at: date.toISOString(),
+        notes: notesInput.value,
+        triggers: readChips(li, 'triggers'),
+        intensity: readChips(li, 'intensity')[0] || null,
+      };
+      const nextEntries = entries.map((e) => e.id === id ? updated : e);
+      if (!persistEntries(nextEntries)) {
+        toast('Could not save — device storage is full or blocked');
+        return;
+      }
       li.classList.remove('open');
-      render();
-      toast('Saved');
+      finishChange('Saved');
       break;
     }
 
     case 'cancel': {
       li.classList.remove('open');
+      li.querySelector('.entry-head').setAttribute('aria-expanded', 'false');
       body.hidden = true;
       break;
     }
 
     case 'delete': {
       if (!confirm(`Delete the entry from ${describe(new Date(entry.at))}?`)) return;
-      entries = entries.filter((e) => e.id !== id);
-      save();
-      markChanged();
-      render();
-      toast('Entry deleted');
+      if (!persistEntries(entries.filter((e) => e.id !== id))) {
+        toast('Could not delete — device storage is full or blocked');
+        return;
+      }
+      finishChange('Entry deleted');
       break;
     }
   }
@@ -451,13 +505,14 @@ list.addEventListener('click', (ev) => {
 /* ---- Adding ------------------------------------------------------------ */
 
 $('logNow').addEventListener('click', () => {
-  entries.push({
+  const entry = {
     id: uid(), at: new Date().toISOString(), notes: '', triggers: [], intensity: null,
-  });
-  save();
-  markChanged();
-  render();
-  toast('Logged — tap it to add details once it passes');
+  };
+  if (!persistEntries([...entries, entry])) {
+    toast('Could not log — device storage is full or blocked');
+    return;
+  }
+  finishChange('Logged — tap it to add details afterward');
   const first = list.querySelector('.entry');
   if (first) first.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 });
@@ -465,34 +520,45 @@ $('logNow').addEventListener('click', () => {
 const newForm = $('newForm');
 
 $('addOther').addEventListener('click', () => {
-  if (!newForm.hidden) { newForm.hidden = true; return; }
+  if (!newForm.hidden) {
+    newForm.hidden = true;
+    $('addOther').setAttribute('aria-expanded', 'false');
+    return;
+  }
   $('newAt').value = toInput(new Date());
   $('newNotes').value = '';
   fillChips(newForm, { triggers: [], intensity: null });
   newForm.hidden = false;
+  $('addOther').setAttribute('aria-expanded', 'true');
   $('newAt').focus();
 });
 
 newForm.addEventListener('click', (ev) => { handleChipClick(ev); });
 
-$('newCancel').addEventListener('click', () => { newForm.hidden = true; });
+$('newCancel').addEventListener('click', () => {
+  newForm.hidden = true;
+  $('addOther').setAttribute('aria-expanded', 'false');
+  $('addOther').focus();
+});
 
 newForm.addEventListener('submit', (ev) => {
   ev.preventDefault();
   const date = fromInput($('newAt').value);
   if (!date) { toast('Please pick a valid date and time'); return; }
-  entries.push({
+  const entry = {
     id: uid(),
     at: date.toISOString(),
     notes: $('newNotes').value,
     triggers: readChips(newForm, 'triggers'),
     intensity: readChips(newForm, 'intensity')[0] || null,
-  });
-  save();
-  markChanged();
-  render();
+  };
+  if (!persistEntries([...entries, entry])) {
+    toast('Could not save — device storage is full or blocked');
+    return;
+  }
   newForm.hidden = true;
-  toast('Entry added');
+  $('addOther').setAttribute('aria-expanded', 'false');
+  finishChange('Entry added');
 });
 
 /* ---- Backup ------------------------------------------------------------ */
@@ -507,11 +573,16 @@ $('exportBtn').addEventListener('click', () => {
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 
-  // The file on disk now matches what's in the app.
-  meta.lastExportAt = new Date().toISOString();
-  meta.pending = 0;
-  writeJSON(META_KEY, meta);
+  // Browsers do not report whether the user ultimately keeps the download, so
+  // record this as an export attempt rather than claiming the file was saved.
+  const nextMeta = { lastExportAt: new Date().toISOString(), pending: 0 };
+  if (!writeJSON(META_KEY, nextMeta)) {
+    toast('Export started, but the backup reminder could not be saved');
+    return;
+  }
+  meta = nextMeta;
   renderBackupStatus();
+  toast('Export started — check your downloads');
 });
 
 $('importBtn').addEventListener('click', () => $('importFile').click());
@@ -527,24 +598,42 @@ $('importFile').addEventListener('change', async (ev) => {
     const incoming = Array.isArray(parsed) ? parsed : parsed && parsed.entries;
     if (!Array.isArray(incoming)) throw new Error('no entries in file');
 
+    const validRows = incoming.filter(valid);
+    const invalid = incoming.length - validRows.length;
     const seen = new Set(entries.map(contentKey));
+    const nextEntries = [...entries];
     let added = 0;
+    let duplicates = 0;
 
-    for (const raw of incoming.filter(valid)) {
+    for (const raw of validRows) {
       const e = normalise({ ...raw, id: uid(), at: new Date(raw.at).toISOString() });
       const key = contentKey(e);
-      if (seen.has(key)) continue;      // merge, skipping exact duplicates
+      if (seen.has(key)) {
+        duplicates++;
+        continue;
+      }
       seen.add(key);
-      entries.push(e);
+      nextEntries.push(e);
       added++;
     }
 
-    save();
-    if (added) markChanged(added);
-    render();
-    toast(added
-      ? `Imported ${added} ${added === 1 ? 'entry' : 'entries'}`
-      : 'Nothing new to import');
+    if (added && !persistEntries(nextEntries)) {
+      toast('Could not import — device storage is full or blocked');
+      return;
+    }
+
+    const parts = [];
+    if (added) parts.push(`${added} imported`);
+    if (duplicates) parts.push(`${duplicates} duplicate${duplicates === 1 ? '' : 's'} skipped`);
+    if (invalid) parts.push(`${invalid} invalid ${invalid === 1 ? 'record' : 'records'} skipped`);
+    const message = parts.length ? parts.join(' · ') : 'The backup contained no entries';
+
+    if (added) {
+      finishChange(message, added);
+    } else {
+      render();
+      toast(message);
+    }
   } catch (err) {
     console.error(err);
     toast('That file does not look like a Migraine Log backup');

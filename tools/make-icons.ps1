@@ -24,11 +24,10 @@ function Write-Icon([string]$file, [int]$size, [double]$radiusFrac, [double]$con
     $g.InterpolationMode = 'HighQualityBicubic'
     $g.PixelOffsetMode   = 'HighQuality'
 
-    # Background: deep indigo to violet, top-left to bottom-right.
+    # Background: solid charcoal, matching the app's quiet logbook palette.
     $rect  = New-Object System.Drawing.RectangleF(0, 0, $size, $size)
-    $from  = [System.Drawing.Color]::FromArgb(255, 58, 30, 112)
-    $to    = [System.Drawing.Color]::FromArgb(255, 124, 62, 214)
-    $brush = New-Object System.Drawing.Drawing2D.LinearGradientBrush($rect, $from, $to, 45.0)
+    $brush = New-Object System.Drawing.SolidBrush(
+        [System.Drawing.Color]::FromArgb(255, 30, 36, 36))
 
     if ($radiusFrac -gt 0) {
         $path = New-RoundedPath 0 0 $size $size ([single]($size * $radiusFrac))
@@ -38,39 +37,41 @@ function Write-Icon([string]$file, [int]$size, [double]$radiusFrac, [double]$con
         $g.FillRectangle($brush, $rect)
     }
 
-    # Glyph: a centred dot ringed by fading arcs - a migraine aura / throb.
+    # Glyph: a small paper log with an accent spine and three written lines.
     $cx = $size / 2.0
     $cy = $size / 2.0
-    $u  = ($size * $contentFrac) / 2.0     # content radius
+    $u  = ($size * $contentFrac) / 2.0
+    $paperX = [single]($cx - $u * 0.72)
+    $paperY = [single]($cy - $u * 0.88)
+    $paperW = [single]($u * 1.44)
+    $paperH = [single]($u * 1.76)
+    $paperPath = New-RoundedPath $paperX $paperY $paperW $paperH ([single]($u * 0.10))
+    $paperBrush = New-Object System.Drawing.SolidBrush(
+        [System.Drawing.Color]::FromArgb(255, 243, 240, 233))
+    $g.FillPath($paperBrush, $paperPath)
 
-    $dotR = $u * 0.17
-    $white = [System.Drawing.Color]::White
-    $dotBrush = New-Object System.Drawing.SolidBrush($white)
-    $g.FillEllipse($dotBrush, [single]($cx - $dotR), [single]($cy - $dotR),
-                              [single]($dotR * 2), [single]($dotR * 2))
+    $accentPen = New-Object System.Drawing.Pen(
+        [System.Drawing.Color]::FromArgb(255, 169, 71, 53), [single]($u * 0.12))
+    $accentPen.StartCap = 'Round'; $accentPen.EndCap = 'Round'
+    $spineX = [single]($paperX + $u * 0.32)
+    $g.DrawLine($accentPen, $spineX, [single]($paperY + $u * 0.22),
+                            $spineX, [single]($paperY + $paperH - $u * 0.22))
 
-    $ringRadii  = @(0.42, 0.68, 0.94)
-    $ringAlphas = @(255, 198, 132)
-    $penW = [single]($u * 0.115)
-
-    for ($i = 0; $i -lt 3; $i++) {
-        $r = $u * $ringRadii[$i]
-        $pen = New-Object System.Drawing.Pen(
-            [System.Drawing.Color]::FromArgb($ringAlphas[$i], 255, 255, 255), $penW)
-        $pen.StartCap = 'Round'
-        $pen.EndCap   = 'Round'
-        $box = New-Object System.Drawing.RectangleF(
-            [single]($cx - $r), [single]($cy - $r), [single]($r * 2), [single]($r * 2))
-        # Two mirrored arcs, leaving gaps at 12 and 6 o'clock.
-        $g.DrawArc($pen, $box, 285, 150)
-        $g.DrawArc($pen, $box, 105, 150)
-        $pen.Dispose()
+    $inkPen = New-Object System.Drawing.Pen(
+        [System.Drawing.Color]::FromArgb(255, 73, 79, 77), [single]($u * 0.075))
+    $inkPen.StartCap = 'Round'; $inkPen.EndCap = 'Round'
+    $lineX = [single]($paperX + $u * 0.55)
+    $lineEnd = [single]($paperX + $paperW - $u * 0.22)
+    foreach ($offset in @(-0.42, 0.0, 0.42)) {
+        $lineY = [single]($cy + $u * $offset)
+        $g.DrawLine($inkPen, $lineX, $lineY, $lineEnd, $lineY)
     }
 
     $out = Join-Path $outDir $file
     $bmp.Save($out, [System.Drawing.Imaging.ImageFormat]::Png)
 
-    $dotBrush.Dispose(); $brush.Dispose(); $g.Dispose(); $bmp.Dispose()
+    $inkPen.Dispose(); $accentPen.Dispose(); $paperBrush.Dispose(); $paperPath.Dispose()
+    $brush.Dispose(); $g.Dispose(); $bmp.Dispose()
     Write-Output ("{0}  {1}x{1}" -f $file, $size)
 }
 
