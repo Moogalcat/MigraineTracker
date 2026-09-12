@@ -5,3 +5,6 @@ desktop.ini
 
 # Machine-local Claude Code settings (launch.json is shared on purpose)
 .claude/settings.local.json
+
+# Local diary imports contain private health data
+migraine-log-*-import.json

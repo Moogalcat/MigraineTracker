@@ -11,8 +11,8 @@ current time; every other detail is optional and can be edited later.
 - **Possible triggers:** all trigger choices remain visible in the editor. There
   are twelve built-in triggers and up to six new custom labels. Imported labels
   are preserved even when they exceed that limit.
-- **History:** entries are grouped by month, newest first. The latest 20 appear
-  initially; Show older reveals another 20. A recovered older draft is brought
+- **History:** entries are grouped by year, newest first. The latest five appear
+  initially; Show older reveals another ten. A recovered older draft is brought
   into view even if that requires showing more history initially.
 - **Statistics:** counts, average gap, monthly/yearly totals, recorded possible
   triggers, and separate rating breakdowns. The current month says “so far”; a

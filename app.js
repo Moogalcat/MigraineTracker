@@ -29,7 +29,9 @@ let lastRaw = null;
 let state = loadState();
 let entries = state.entries;
 let meta = loadMeta();
-let visibleCount = 20;
+const INITIAL_VISIBLE = 5;
+const HISTORY_BATCH = 10;
+let visibleCount = INITIAL_VISIBLE;
 let firstRender = true;
 const drafts = new Map();
 loadDrafts();
@@ -263,13 +265,14 @@ function render() {
   const errors = new Map([...list.querySelectorAll('.entry')].map(li => [li.dataset.id, li.querySelector('.entry-error').textContent]));
   if (openOnRender) { openIds.add(openOnRender); openOnRender = null; }
   list.textContent = '';
-  let lastMonth = '';
+  let lastYear = '';
   for (const [index, entry] of entries.slice(0, visibleCount).entries()) {
     const date = new Date(entry.at);
-    const month = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(date);
-    if (month !== lastMonth) {
-      const row = document.createElement('li'); row.className = 'month-heading';
-      const heading = document.createElement('h2'); heading.textContent = month; row.appendChild(heading); list.appendChild(row); lastMonth = month;
+    const year = String(date.getFullYear());
+    if (year !== lastYear) {
+      const row = document.createElement('li'); row.className = 'year-heading';
+      const heading = document.createElement('h2'); heading.textContent = year;
+      row.appendChild(heading); list.appendChild(row); lastYear = year;
     }
     const li = tpl.content.firstElementChild.cloneNode(true);
     const head = li.querySelector('.entry-head'), body = li.querySelector('.entry-body');
@@ -303,13 +306,15 @@ function render() {
   $('logNow').disabled = storageBlocked;
   $('exportBtn').disabled = storageBlocked;
   $('theme').disabled = storageBlocked;
-  $('showOlder').hidden = entries.length <= visibleCount;
-  $('showOlder').textContent = `Show older (${Math.max(0, entries.length - visibleCount)} remaining)`;
+  const remaining = Math.max(0, entries.length - visibleCount);
+  const nextCount = Math.min(HISTORY_BATCH, remaining);
+  $('showOlder').hidden = remaining === 0;
+  $('showOlder').textContent = `Show ${nextCount} older ${nextCount === 1 ? 'entry' : 'entries'} (${remaining} remaining)`;
   renderTally(); renderStats(); renderBackupStatus();
 }
 
 list.addEventListener('input', ev => rememberDraft(ev.target.closest('.entry')));
-$('showOlder').addEventListener('click', () => { visibleCount += 20; render(); });
+$('showOlder').addEventListener('click', () => { visibleCount += HISTORY_BATCH; render(); });
 
 // The badge and trigger list shown on the collapsed card.
 function renderEntryMeta(el, entry) {
@@ -853,7 +858,7 @@ $('logNow').addEventListener('click', () => {
   }
   freshEntryIds.add(entry.id);
   openOnRender = entry.id;
-  visibleCount = Math.max(20, visibleCount, entries.findIndex(e => e.id === entry.id) + 1);
+  visibleCount = Math.max(INITIAL_VISIBLE, visibleCount, entries.findIndex(e => e.id === entry.id) + 1);
   finishChange('Logged');
 
   const card = list.querySelector(`.entry[data-id="${CSS.escape(entry.id)}"]`);
