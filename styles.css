@@ -200,8 +200,6 @@ summary {
   padding: 8px 0;
 }
 .note { color: var(--text-dim); font-size: 0.85rem; line-height: 1.6; }
-.backup-status { font-weight: 400; }
-.backup-status.stale { color: var(--accent); font-weight: 600; }
 
 /* ---- Toast ------------------------------------------------------------- */
 .toast {

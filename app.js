@@ -2,67 +2,30 @@
 'use strict';
 
 const KEY = 'migraine-log-v1';
-const DELETED_KEY = 'migraine-log-deleted-v1';
-const META_KEY = 'migraine-log-meta-v1';
-
-// Deletions are remembered so importing an older backup can't resurrect them.
-// They are tiny; this cap just stops the list growing without bound.
-const MAX_TOMBSTONES = 1000;
 
 const $ = (id) => document.getElementById(id);
 const list = $('list');
 const tpl = $('entryTpl');
 
 let entries = load();
-let deleted = loadDeleted();
-let meta = loadMeta();
 
 /* ---- Storage ----------------------------------------------------------- */
 
-function readJSON(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch (err) {
-    console.error(`Could not read ${key}`, err);
-    return fallback;
-  }
-}
-
-function writeJSON(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-    return true;
-  } catch (err) {
-    console.error(err);
-    toast('Could not save — device storage is full or blocked');
-    return false;
-  }
-}
-
 function load() {
-  const parsed = readJSON(KEY, []);
-  if (!Array.isArray(parsed)) return [];
-  return parsed.filter(valid).map((e) => ({
-    id: String(e.id || uid()),
-    at: e.at,
-    notes: typeof e.notes === 'string' ? e.notes : '',
-  }));
-}
-
-function loadDeleted() {
-  const parsed = readJSON(DELETED_KEY, []);
-  if (!Array.isArray(parsed)) return [];
-  return parsed.filter((d) => d && typeof d === 'object' && (d.id || d.at));
-}
-
-function loadMeta() {
-  const parsed = readJSON(META_KEY, {});
-  const m = parsed && typeof parsed === 'object' ? parsed : {};
-  return {
-    lastExportAt: typeof m.lastExportAt === 'string' ? m.lastExportAt : null,
-    pending: Number.isFinite(m.pending) ? m.pending : 0,
-  };
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(valid).map((e) => ({
+      id: String(e.id || uid()),
+      at: e.at,
+      notes: typeof e.notes === 'string' ? e.notes : '',
+    }));
+  } catch (err) {
+    console.error('Could not read saved entries', err);
+    return [];
+  }
 }
 
 function valid(e) {
@@ -71,33 +34,20 @@ function valid(e) {
 
 function save() {
   entries.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
-  writeJSON(KEY, entries);
-}
-
-function saveDeleted() {
-  // Keep only the most recent tombstones.
-  deleted.sort((a, b) => Date.parse(b.deletedAt || 0) - Date.parse(a.deletedAt || 0));
-  if (deleted.length > MAX_TOMBSTONES) deleted.length = MAX_TOMBSTONES;
-  writeJSON(DELETED_KEY, deleted);
-}
-
-function saveMeta() {
-  writeJSON(META_KEY, meta);
-}
-
-// Counts edits made since the last export, so we can flag a stale backup file.
-function markChanged(n = 1) {
-  meta.pending += n;
-  saveMeta();
-  renderBackupStatus();
+  try {
+    localStorage.setItem(KEY, JSON.stringify(entries));
+  } catch (err) {
+    console.error(err);
+    toast('Could not save — device storage is full or blocked');
+  }
 }
 
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-// Identifies an entry by content, for matching across export/import when ids
-// differ. `at` is always a fixed-length ISO string, so this cannot collide.
+// Identifies an entry by content, to skip duplicates on import. `at` is always
+// a fixed-length ISO string, so this cannot collide across different entries.
 function contentKey(at, notes) {
   return `${at}|${notes}`;
 }
@@ -122,22 +72,18 @@ function fromInput(str) {
 const timeFmt = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
 const dateFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 const dateFmtYear = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-const shortFmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' });
 
 function midnight(d) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
 
-function daysAgo(date) {
-  return Math.round((midnight(new Date()) - midnight(date)) / 86400000);
-}
-
 function describe(date) {
-  const days = daysAgo(date);
+  const now = new Date();
+  const days = Math.round((midnight(now) - midnight(date)) / 86400000);
   const time = timeFmt.format(date);
   if (days === 0) return `Today, ${time}`;
   if (days === 1) return `Yesterday, ${time}`;
-  if (date.getFullYear() !== new Date().getFullYear()) {
+  if (date.getFullYear() !== now.getFullYear()) {
     return `${dateFmtYear.format(date)}, ${time}`;
   }
   return `${dateFmt.format(date)}, ${time}`;
@@ -171,7 +117,6 @@ function render() {
 
   $('empty').hidden = entries.length > 0;
   renderTally();
-  renderBackupStatus();
 }
 
 function renderTally() {
@@ -189,28 +134,6 @@ function renderTally() {
 
   const label = thisMonth === 1 ? '1 entry' : `${thisMonth} entries`;
   el.textContent = `${label} this month — ${last90} in the last 90 days`;
-}
-
-// Tells the user, without opening the section, whether their backup file is
-// out of date — that file is the thing a deletion cannot reach on its own.
-function renderBackupStatus() {
-  const el = $('backupStatus');
-  if (!el) return;
-
-  if (meta.pending > 0) {
-    const n = meta.pending;
-    el.textContent = ` — ${n} ${n === 1 ? 'change' : 'changes'} not in your backup file`;
-    el.classList.add('stale');
-    return;
-  }
-
-  el.classList.remove('stale');
-  if (!meta.lastExportAt) { el.textContent = ''; return; }
-
-  const d = new Date(meta.lastExportAt);
-  const days = daysAgo(d);
-  const when = days === 0 ? 'today' : days === 1 ? 'yesterday' : shortFmt.format(d);
-  el.textContent = ` — backup exported ${when}`;
 }
 
 /* ---- Editing and deleting ---------------------------------------------- */
@@ -250,7 +173,6 @@ list.addEventListener('click', (ev) => {
       entry.at = date.toISOString();
       entry.notes = notesInput.value;
       save();
-      markChanged();
       li.classList.remove('open');
       render();
       toast('Saved');
@@ -265,23 +187,10 @@ list.addEventListener('click', (ev) => {
 
     case 'delete': {
       if (!confirm(`Delete the entry from ${describe(new Date(entry.at))}?`)) return;
-
-      // Record the deletion so a later import cannot bring it back. Only the
-      // id and timestamp are kept - never the notes.
-      deleted.push({
-        id: entry.id,
-        at: entry.at,
-        deletedAt: new Date().toISOString(),
-      });
-      saveDeleted();
-
       entries = entries.filter((e) => e.id !== id);
       save();
-      markChanged();
       render();
-      toast(meta.lastExportAt
-        ? 'Deleted — export again to update your backup file'
-        : 'Entry deleted');
+      toast('Entry deleted');
       break;
     }
   }
@@ -292,7 +201,6 @@ list.addEventListener('click', (ev) => {
 $('logNow').addEventListener('click', () => {
   entries.push({ id: uid(), at: new Date().toISOString(), notes: '' });
   save();
-  markChanged();
   render();
   toast('Logged — tap it to add notes');
   const first = list.querySelector('.entry');
@@ -317,7 +225,6 @@ newForm.addEventListener('submit', (ev) => {
   if (!date) { toast('Please pick a valid date and time'); return; }
   entries.push({ id: uid(), at: date.toISOString(), notes: $('newNotes').value });
   save();
-  markChanged();
   render();
   newForm.hidden = true;
   toast('Entry added');
@@ -326,29 +233,14 @@ newForm.addEventListener('submit', (ev) => {
 /* ---- Backup ------------------------------------------------------------ */
 
 $('exportBtn').addEventListener('click', () => {
-  // Only current entries. Deletions are tracked on the device, never written
-  // here, so an exported file contains no trace of a deleted entry.
-  const payload = {
-    format: 'migraine-log',
-    version: 2,
-    exportedAt: new Date().toISOString(),
-    entries,
-  };
-
   const stamp = toInput(new Date()).replace(/[:T]/g, '-');
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify(entries, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   a.download = `migraine-log-${stamp}.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
-
-  // The file on disk now matches what's in the app.
-  meta.lastExportAt = new Date().toISOString();
-  meta.pending = 0;
-  saveMeta();
-  renderBackupStatus();
 });
 
 $('importBtn').addEventListener('click', () => $('importFile').click());
@@ -360,46 +252,28 @@ $('importFile').addEventListener('change', async (ev) => {
 
   try {
     const parsed = JSON.parse(await file.text());
-
-    // v2 files are an object; v1 files were a bare array of entries.
+    // A backup is a plain array of entries; also accept a wrapping object.
     const incoming = Array.isArray(parsed) ? parsed : parsed && parsed.entries;
     if (!Array.isArray(incoming)) throw new Error('no entries in file');
-    const tombIds = new Set(deleted.map((d) => d.id).filter(Boolean));
-    const tombAts = new Set(
-      deleted.filter((d) => d.at).map((d) => new Date(d.at).toISOString())
-    );
 
-    const seenKeys = new Set(entries.map((e) => contentKey(e.at, e.notes)));
-    const seenIds = new Set(entries.map((e) => e.id));
-
+    const seen = new Set(entries.map((e) => contentKey(e.at, e.notes)));
     let added = 0;
-    let blocked = 0;
 
     for (const raw of incoming.filter(valid)) {
       const at = new Date(raw.at).toISOString();
       const notes = typeof raw.notes === 'string' ? raw.notes : '';
       const key = contentKey(at, notes);
-      const rawId = raw.id ? String(raw.id) : '';
-
-      if (tombAts.has(at) || (rawId && tombIds.has(rawId))) { blocked++; continue; }
-      if (seenKeys.has(key) || (rawId && seenIds.has(rawId))) { continue; }
-
-      // Preserve the id where we can, so round-trips stay stable.
-      const id = rawId && !seenIds.has(rawId) ? rawId : uid();
-      seenKeys.add(key);
-      seenIds.add(id);
-      entries.push({ id, at, notes });
+      if (seen.has(key)) continue;      // merge, skipping exact duplicates
+      seen.add(key);
+      entries.push({ id: uid(), at, notes });
       added++;
     }
 
     save();
-    if (added) markChanged(added);
     render();
-
-    const parts = [];
-    parts.push(added ? `Imported ${added} ${added === 1 ? 'entry' : 'entries'}` : 'Nothing new to import');
-    if (blocked) parts.push(`${blocked} previously deleted ${blocked === 1 ? 'entry' : 'entries'} skipped`);
-    toast(parts.join(' — '));
+    toast(added
+      ? `Imported ${added} ${added === 1 ? 'entry' : 'entries'}`
+      : 'Nothing new to import');
   } catch (err) {
     console.error(err);
     toast('That file does not look like a Migraine Log backup');
@@ -414,7 +288,7 @@ function toast(msg) {
   el.textContent = msg;
   el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.hidden = true; }, 3400);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 2600);
 }
 
 /* ---- Boot -------------------------------------------------------------- */

@@ -81,45 +81,25 @@ clear site data, or reset the phone — and it does not sync between devices. Op
 **Import backup** merges a file back in, skipping entries it already has, so you
 can also use export/import to move your history to another device.
 
-The **Backup & data** heading shows how many changes you've made since your last
-export, so you can see at a glance when the file on disk is out of date.
-
-### How deletions are handled
-
-A web page cannot reach into a file you already saved and edit it. So a deletion
-cannot rewrite an exported backup — you have to export again, which is what the
-"N changes not in your backup file" counter is nudging you to do.
-
-What the app does guarantee:
-
-- A **new export contains no trace of a deleted entry** — not its notes, not its
-  timestamp.
-- The **deleted entry's notes are not kept anywhere** on the device.
-- **Deletions stick.** The app records the deleted entry's id and timestamp in
-  `migraine-log-deleted-v1`, and importing a backup made *before* the deletion
-  will not bring the entry back. The toast tells you when entries were skipped
-  for this reason. Matching is by id *or* timestamp, so it still holds if the
-  notes or the id in the old file differ.
-
-The one case this cannot cover is hand-editing a backup to change both the id
-and the timestamp of a deleted entry — then it looks like a new entry, and it
-will import.
+Deleting an entry removes it from the app immediately, but it cannot change a
+backup file you already saved — a web page has no way to edit a file on disk.
+So if you import an older backup, anything you deleted since then comes back;
+delete it again. In practice this only bites with throwaway test entries, which
+are easy to spot and remove.
 
 ### Backup file format
 
+A backup is a plain JSON array, easy to read or hand-edit:
+
 ```json
-{
-  "format": "migraine-log",
-  "version": 2,
-  "exportedAt": "2026-09-12T10:45:00.000Z",
-  "entries": [
-    { "id": "mty9eksz6g7525", "at": "2026-09-09T12:30:00.000Z", "notes": "..." }
-  ]
-}
+[
+  { "id": "mty9eksz6g7525", "at": "2026-09-09T12:30:00.000Z", "notes": "..." }
+]
 ```
 
-`at` is always UTC; the app converts to local time for display. Older backups
-that were a bare JSON array of entries still import fine.
+`at` is always UTC; the app converts to local time for display. `id` is
+regenerated on import, so you can safely delete or duplicate entries in the file
+by hand. An object of the form `{ "entries": [...] }` is also accepted.
 
 ## Changing the app
 
