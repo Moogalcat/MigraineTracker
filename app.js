@@ -2,30 +2,53 @@
 'use strict';
 
 const KEY = 'migraine-log-v1';
+const META_KEY = 'migraine-log-meta-v1';
 
 const $ = (id) => document.getElementById(id);
 const list = $('list');
 const tpl = $('entryTpl');
 
 let entries = load();
+let meta = loadMeta();
 
 /* ---- Storage ----------------------------------------------------------- */
 
-function load() {
+function readJSON(key, fallback) {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(valid).map((e) => ({
-      id: String(e.id || uid()),
-      at: e.at,
-      notes: typeof e.notes === 'string' ? e.notes : '',
-    }));
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
   } catch (err) {
-    console.error('Could not read saved entries', err);
-    return [];
+    console.error(`Could not read ${key}`, err);
+    return fallback;
   }
+}
+
+function writeJSON(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (err) {
+    console.error(err);
+    toast('Could not save — device storage is full or blocked');
+  }
+}
+
+function load() {
+  const parsed = readJSON(KEY, []);
+  if (!Array.isArray(parsed)) return [];
+  return parsed.filter(valid).map((e) => ({
+    id: String(e.id || uid()),
+    at: e.at,
+    notes: typeof e.notes === 'string' ? e.notes : '',
+  }));
+}
+
+// Remembers when you last exported, and how many edits you've made since.
+function loadMeta() {
+  const m = readJSON(META_KEY, {});
+  return {
+    lastExportAt: m && typeof m.lastExportAt === 'string' ? m.lastExportAt : null,
+    pending: m && Number.isFinite(m.pending) ? m.pending : 0,
+  };
 }
 
 function valid(e) {
@@ -34,12 +57,14 @@ function valid(e) {
 
 function save() {
   entries.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
-  try {
-    localStorage.setItem(KEY, JSON.stringify(entries));
-  } catch (err) {
-    console.error(err);
-    toast('Could not save — device storage is full or blocked');
-  }
+  writeJSON(KEY, entries);
+}
+
+// Call after any edit, so the backup status can flag a stale export file.
+function markChanged(n = 1) {
+  meta.pending += n;
+  writeJSON(META_KEY, meta);
+  renderBackupStatus();
 }
 
 function uid() {
@@ -72,14 +97,19 @@ function fromInput(str) {
 const timeFmt = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
 const dateFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 const dateFmtYear = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+const shortFmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' });
 
 function midnight(d) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
 
+function daysAgo(date) {
+  return Math.round((midnight(new Date()) - midnight(date)) / 86400000);
+}
+
 function describe(date) {
   const now = new Date();
-  const days = Math.round((midnight(now) - midnight(date)) / 86400000);
+  const days = daysAgo(date);
   const time = timeFmt.format(date);
   if (days === 0) return `Today, ${time}`;
   if (days === 1) return `Yesterday, ${time}`;
@@ -117,6 +147,7 @@ function render() {
 
   $('empty').hidden = entries.length > 0;
   renderTally();
+  renderBackupStatus();
 }
 
 function renderTally() {
@@ -134,6 +165,30 @@ function renderTally() {
 
   const label = thisMonth === 1 ? '1 entry' : `${thisMonth} entries`;
   el.textContent = `${label} this month — ${last90} in the last 90 days`;
+}
+
+// Shows at a glance whether the backup file on disk is out of date. The app
+// cannot update a file you already saved, so this is the nudge to export again.
+function renderBackupStatus() {
+  const el = $('backupStatus');
+  if (!el) return;
+
+  el.classList.toggle('stale', meta.pending > 0);
+
+  if (meta.pending > 0) {
+    const n = meta.pending;
+    el.textContent = meta.lastExportAt
+      ? ` — ${n} ${n === 1 ? 'change' : 'changes'} not backed up`
+      : ' — never backed up';
+    return;
+  }
+
+  if (!meta.lastExportAt) { el.textContent = ''; return; }
+
+  const d = new Date(meta.lastExportAt);
+  const days = daysAgo(d);
+  const when = days === 0 ? 'today' : days === 1 ? 'yesterday' : shortFmt.format(d);
+  el.textContent = ` — backup exported ${when}`;
 }
 
 /* ---- Editing and deleting ---------------------------------------------- */
@@ -173,6 +228,7 @@ list.addEventListener('click', (ev) => {
       entry.at = date.toISOString();
       entry.notes = notesInput.value;
       save();
+      markChanged();
       li.classList.remove('open');
       render();
       toast('Saved');
@@ -189,6 +245,7 @@ list.addEventListener('click', (ev) => {
       if (!confirm(`Delete the entry from ${describe(new Date(entry.at))}?`)) return;
       entries = entries.filter((e) => e.id !== id);
       save();
+      markChanged();
       render();
       toast('Entry deleted');
       break;
@@ -201,6 +258,7 @@ list.addEventListener('click', (ev) => {
 $('logNow').addEventListener('click', () => {
   entries.push({ id: uid(), at: new Date().toISOString(), notes: '' });
   save();
+  markChanged();
   render();
   toast('Logged — tap it to add notes');
   const first = list.querySelector('.entry');
@@ -225,6 +283,7 @@ newForm.addEventListener('submit', (ev) => {
   if (!date) { toast('Please pick a valid date and time'); return; }
   entries.push({ id: uid(), at: date.toISOString(), notes: $('newNotes').value });
   save();
+  markChanged();
   render();
   newForm.hidden = true;
   toast('Entry added');
@@ -241,6 +300,12 @@ $('exportBtn').addEventListener('click', () => {
   a.download = `migraine-log-${stamp}.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+  // The file on disk now matches what's in the app.
+  meta.lastExportAt = new Date().toISOString();
+  meta.pending = 0;
+  writeJSON(META_KEY, meta);
+  renderBackupStatus();
 });
 
 $('importBtn').addEventListener('click', () => $('importFile').click());
@@ -270,6 +335,7 @@ $('importFile').addEventListener('change', async (ev) => {
     }
 
     save();
+    if (added) markChanged(added);
     render();
     toast(added
       ? `Imported ${added} ${added === 1 ? 'entry' : 'entries'}`

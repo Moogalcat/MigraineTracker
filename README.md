@@ -81,6 +81,10 @@ clear site data, or reset the phone — and it does not sync between devices. Op
 **Import backup** merges a file back in, skipping entries it already has, so you
 can also use export/import to move your history to another device.
 
+The **Backup & data** heading tells you when the file on disk is out of date:
+it shows how many changes you've made since your last export, or when that
+export happened. Exporting again clears it.
+
 Deleting an entry removes it from the app immediately, but it cannot change a
 backup file you already saved — a web page has no way to edit a file on disk.
 So if you import an older backup, anything you deleted since then comes back;
