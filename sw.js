@@ -1,6 +1,6 @@
 /* Service worker: makes the app load and work with no network at all.
    Bump CACHE when you change any of the files below. */
-const CACHE = 'migraine-log-v27';
+const CACHE = 'migraine-log-v28';
 
 const SHELL = [
   '.',
@@ -42,27 +42,23 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // Navigations: serve the cached shell so the app opens instantly offline,
-  // then refresh it in the background so the next launch is up to date even
-  // if this cache version somehow holds an old copy.
+  // Navigations: prefer the network so browser launches and tracking redirects
+  // cannot become trapped on a stale cached page. Fall back to the cached shell
+  // when the device is offline.
   if (req.mode === 'navigate') {
     event.respondWith(
-      caches.match('index.html').then((hit) => {
-        const fromNetwork = fetch(new Request('index.html', { cache: 'reload' }))
-          .then((res) => {
-            if (res && res.ok) {
-              caches.open(CACHE).then((cache) => cache.put('index.html', res.clone()));
-            }
-            return res;
-          })
-          .catch(() => hit);
-
-        if (hit) {
-          event.waitUntil(fromNetwork.catch(() => {}));
-          return hit;
+      (async () => {
+        try {
+          const res = await fetch(new Request(req, { cache: 'reload' }));
+          if (res && res.ok) {
+            const cache = await caches.open(CACHE);
+            await cache.put('index.html', res.clone());
+          }
+          return res;
+        } catch {
+          return (await caches.match('index.html')) || Response.error();
         }
-        return fromNetwork;
-      })
+      })()
     );
     return;
   }

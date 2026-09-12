@@ -295,12 +295,13 @@ The worker precaches the shell with `cache: 'reload'` so each request goes past
 the HTTP cache. Without that, a worker installing shortly after a deploy can
 precache the *previous* page — GitHub Pages serves HTML with `max-age=600`, so
 the browser may still hold a fresh-enough copy of the old file — and then pin
-it for the life of that cache version. Navigations are also revalidated in the
-background, so a stale shell heals on the next launch rather than waiting for
-another version bump.
+it for the life of that cache version.
 
-Because the shell is served cache-first, the first launch after a deploy still
-shows the previous version; the one after it is current.
+Page navigations are network-first, bypassing the browser's HTTP cache. This
+prevents repeated launches or social-media tracking redirects from becoming
+stuck on a stale shell. If the network is unavailable, navigation falls back
+to the precached page, so the installed app continues to work offline. Other
+static assets remain cache-first and refresh in the background.
 
 The icons are generated, not hand-drawn. To change the colours or the glyph,
 edit `tools/make-icons.ps1` and re-run it:
