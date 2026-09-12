@@ -5,12 +5,15 @@ date + time, optional triggers and intensity, and a free-text note. All of it
 stays editable forever.
 
 - **One tap to log** — "Log migraine now" stamps the current time immediately
-  and asks nothing else; fill in the rest whenever you feel up to it.
+  and asks nothing else.
+- **The entry opens itself** — the whole editor appears in place, so you can
+  fill in what you know now and the rest later without hunting for the entry.
 - **Triggers you tap, not type** — twelve common ones built in, plus up to six
   of your own.
 - **Intensity afterwards** — you don't know how bad it was until it's over, so
   it's never asked for up front.
-- **Any time, any date** — backdate an entry, or correct the time later.
+- **Any time, any date** — change an entry's date and time to record a past
+  attack, or to correct one later.
 - **Statistics** — frequency by month, your most common triggers and an
   intensity breakdown, from the entries you already have.
 - **Works offline** — once installed it opens with no network at all.
@@ -90,16 +93,26 @@ The page is ordered by how often you need each part:
 
 1. **Log migraine now** — the only thing that matters mid-attack, so it is
    first and is a single tap.
-2. **The log itself** — newest first. Tap any entry to edit it.
-3. **Add a past entry** — backfilling old attacks is a one-off setup task, so
-   it sits *below* the log rather than competing with the button you press
-   during an attack. It becomes redundant once your history is in.
-4. **Statistics** and **Backup & data** — collapsed panels at the bottom.
+2. **The log itself** — newest first. A new entry arrives already open, with
+   its date, triggers, intensity and notes all editable in place; tap any
+   older entry to open it the same way.
+3. **Statistics** — a button that reveals the summary below it.
+4. **Backup & data** — last, since it is the least frequently needed.
+
+There is no separate "add a past entry" form. A past attack is just a normal
+entry with its date changed, and because a new entry opens with its date field
+right there, that takes the same number of taps a dedicated form would — with
+one screen to learn instead of two.
+
+Logging is committed the instant you tap, before the editor opens. **Cancel**
+therefore discards your unsaved edits but keeps the entry; it is not an undo
+for the log itself. That is deliberate — an entry should never be lost because
+the app closed mid-typing. Delete an unwanted entry with **Delete**.
 
 ### Statistics
 
-Collapsed by default, with the useful headline in the summary line
-(`Statistics — last one 6 days ago`). Opening it shows four blocks:
+A button rather than a disclosure, carrying the useful headline in its own
+label (`Statistics — last one 6 days ago`). Pressing it reveals four blocks:
 
 | Block | Shows |
 | --- | --- |

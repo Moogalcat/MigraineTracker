@@ -95,11 +95,12 @@ main, .topbar, .footer {
 }
 .tally:empty { display: none; }
 
-.actions-late { margin-top: 24px; }
+.actions-late { margin: 26px 0 0; }
+.actions-late .btn { flex-wrap: wrap; row-gap: 0; }
 
 .actions {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   margin: 22px 0 26px;
 }
@@ -131,17 +132,9 @@ main, .topbar, .footer {
 .row .btn-danger { margin-left: auto; }
 
 .card { background: var(--surface); }
-.editor {
-  margin: 0 0 26px;
-  padding: 20px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  box-shadow: 4px 4px 0 var(--line);
-}
-.editor-title { margin: 0 0 16px; font-family: Georgia, "Times New Roman", serif; font-size: 1.25rem; font-weight: 600; }
 
 label, legend { display: block; margin: 15px 0 6px; padding: 0; color: var(--text-dim); font-size: 0.86rem; font-weight: 650; }
-.editor > label:first-of-type, .entry-body > label:first-child { margin-top: 0; }
+.entry-body > label:first-child { margin-top: 0; }
 .control-group { min-width: 0; margin: 0; padding: 0; border: 0; }
 .control-group legend { width: 100%; }
 
@@ -230,13 +223,11 @@ summary { padding: 14px 0; color: var(--text-dim); font-size: 0.86rem; font-weig
 .panel-status.stale { color: var(--accent); font-weight: 650; }
 
 /* ---- Statistics -------------------------------------------------------- */
-.panel {
-  width: min(100%, 38rem);
-  margin: 26px auto 0;
+.stats {
+  margin-top: 18px;
+  padding-top: 6px;
   border-top: 1px solid var(--line);
 }
-
-.stats { padding-top: 4px; }
 
 .stat-block { margin-top: 20px; }
 .stat-block:first-child { margin-top: 12px; }

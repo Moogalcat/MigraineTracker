@@ -24,6 +24,10 @@ const tpl = $('entryTpl');
 
 let entries = load();
 let meta = loadMeta();
+
+// Entry id to open on the next render - a freshly logged entry shows its whole
+// editor rather than making you tap to open it.
+let openOnRender = null;
 let customTriggers = loadCustomTriggers();
 
 /* ---- Storage ----------------------------------------------------------- */
@@ -178,6 +182,10 @@ function render() {
   const openIds = new Set(
     [...list.querySelectorAll('.entry.open')].map((li) => li.dataset.id)
   );
+  if (openOnRender) {
+    openIds.add(openOnRender);
+    openOnRender = null;
+  }
 
   list.textContent = '';
   for (const [index, entry] of entries.entries()) {
@@ -682,53 +690,20 @@ $('logNow').addEventListener('click', () => {
     toast('Could not log — device storage is full or blocked');
     return;
   }
-  finishChange('Logged — tap it to add details afterward');
-  const first = list.querySelector('.entry');
-  if (first) first.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  openOnRender = entry.id;
+  finishChange('Logged — add details or change the date below');
+
+  const card = list.querySelector(`.entry[data-id="${CSS.escape(entry.id)}"]`);
+  if (card) card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 });
 
-const newForm = $('newForm');
+const statsToggle = $('statsToggle');
 
-$('addOther').addEventListener('click', () => {
-  if (!newForm.hidden) {
-    newForm.hidden = true;
-    $('addOther').setAttribute('aria-expanded', 'false');
-    return;
-  }
-  $('newAt').value = toInput(new Date());
-  $('newNotes').value = '';
-  fillChips(newForm, { triggers: [], intensity: null });
-  newForm.hidden = false;
-  $('addOther').setAttribute('aria-expanded', 'true');
-  $('newAt').focus();
-});
-
-newForm.addEventListener('click', (ev) => { handleChipClick(ev); });
-
-$('newCancel').addEventListener('click', () => {
-  newForm.hidden = true;
-  $('addOther').setAttribute('aria-expanded', 'false');
-  $('addOther').focus();
-});
-
-newForm.addEventListener('submit', (ev) => {
-  ev.preventDefault();
-  const date = fromInput($('newAt').value);
-  if (!date) { toast('Please pick a valid date and time'); return; }
-  const entry = {
-    id: uid(),
-    at: date.toISOString(),
-    notes: $('newNotes').value,
-    triggers: readChips(newForm, 'triggers'),
-    intensity: readChips(newForm, 'intensity')[0] || null,
-  };
-  if (!persistEntries([...entries, entry])) {
-    toast('Could not save — device storage is full or blocked');
-    return;
-  }
-  newForm.hidden = true;
-  $('addOther').setAttribute('aria-expanded', 'false');
-  finishChange('Entry added');
+statsToggle.addEventListener('click', () => {
+  const stats = $('stats');
+  const opening = stats.hidden;
+  stats.hidden = !opening;
+  statsToggle.setAttribute('aria-expanded', String(opening));
 });
 
 /* ---- Backup ------------------------------------------------------------ */

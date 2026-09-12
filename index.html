@@ -37,41 +37,18 @@
 
   <p class="empty" id="empty" hidden>
     No entries yet.<br>
-    Tap <strong>Log migraine now</strong> when one starts &mdash; you can add triggers,
-    intensity and notes afterward.
+    Tap <strong>Log migraine now</strong> when one starts. The entry opens straight
+    away, so you can set triggers, intensity and notes &mdash; or change the date
+    and time to record an attack from the past.
   </p>
 
-  <!-- Backdating is a set-up task, so it sits below the log rather than above it -->
   <div class="actions actions-late">
-    <button type="button" id="addOther" class="btn btn-ghost" aria-expanded="false" aria-controls="newForm">Add a past entry</button>
+    <button type="button" id="statsToggle" class="btn btn-ghost" aria-expanded="false" aria-controls="stats">
+      Statistics<span class="panel-status" id="statsStatus"></span>
+    </button>
   </div>
 
-  <form class="card editor" id="newForm" hidden>
-    <h2 class="editor-title">New entry</h2>
-    <label for="newAt">Date &amp; time</label>
-    <input type="datetime-local" id="newAt" required>
-    <fieldset class="control-group">
-      <legend>Triggers</legend>
-      <div class="chips" data-chips="triggers"></div>
-    </fieldset>
-    <fieldset class="control-group intensity-group">
-      <legend>Intensity <span class="hint">afterward</span></legend>
-      <div class="chips" data-chips="intensity"></div>
-    </fieldset>
-    <label for="newNotes">Notes</label>
-    <textarea id="newNotes" rows="3" placeholder="Anything else worth remembering&hellip;"></textarea>
-    <div class="row">
-      <button type="submit" class="btn btn-primary btn-sm">Save entry</button>
-      <button type="button" class="btn btn-ghost btn-sm" id="newCancel">Cancel</button>
-    </div>
-  </form>
-
-  <section class="panel">
-    <details id="statsBox">
-      <summary>Statistics<span class="panel-status" id="statsStatus"></span></summary>
-      <div id="stats" class="stats"></div>
-    </details>
-  </section>
+  <div class="stats" id="stats" hidden></div>
 </main>
 
 <footer class="footer">
