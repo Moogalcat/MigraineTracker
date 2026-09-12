@@ -1,6 +1,6 @@
 /* Service worker: makes the app load and work with no network at all.
    Bump CACHE when you change any of the files below. */
-const CACHE = 'migraine-log-v20';
+const CACHE = 'migraine-log-v27';
 
 const SHELL = [
   '.',

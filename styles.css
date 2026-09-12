@@ -98,9 +98,6 @@ main, .topbar, .footer {
 }
 .tally:empty { display: none; }
 
-.actions-late { margin: 26px 0 0; }
-.actions-late .btn { flex-wrap: wrap; row-gap: 0; }
-
 .actions {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -139,7 +136,10 @@ main, .topbar, .footer {
 label, legend { display: block; margin: 15px 0 6px; padding: 0; color: var(--text-dim); font-size: 0.86rem; font-weight: 650; }
 .entry-body > label:first-child { margin-top: 0; }
 .control-group { min-width: 0; margin: 0; padding: 0; border: 0; }
-.control-group legend { width: 100%; }
+.entry-body > .control-group { margin-top: 22px; }
+.control-group legend { width: 100%; margin-top: 0; }
+.entry-notes-label { margin-top: 22px; }
+.entry-body > .row { margin-top: 24px; }
 
 input[type="datetime-local"], textarea {
   width: 100%;
@@ -234,25 +234,25 @@ input:focus-visible, textarea:focus-visible, button:focus-visible, summary:focus
 .intensity-group .chip[data-value="Mild"].on { border-color: var(--mild); background: var(--mild); }
 .intensity-group .chip[data-value="Moderate"].on { border-color: var(--moderate); background: var(--moderate); }
 .intensity-group .chip[data-value="Severe"].on { border-color: var(--severe); background: var(--severe); }
-.hint { font-weight: 400; opacity: 0.85; }
 
 .entry.open .chev { transform: rotate(180deg); }
 .entry.open .entry-notes { white-space: normal; }
 .entry-body { padding: 4px 4px 22px 14px; }
 .empty { margin: 42px 12px; color: var(--text-dim); line-height: 1.7; text-align: left; }
 
-.footer { margin-top: 36px; }
+.footer { margin-top: 0; }
 .footer details { border-top: 1px solid var(--line); }
+.footer details:first-child { border-top: 0; }
 summary { padding: 14px 0; color: var(--text-dim); font-size: 0.86rem; font-weight: 650; cursor: pointer; }
 .note { max-width: 32rem; color: var(--text-dim); font-size: 0.84rem; line-height: 1.6; }
+.install-steps { max-width: 34rem; margin: 10px 0 20px; padding-left: 1.2rem; color: var(--text-dim); font-size: 0.84rem; line-height: 1.6; }
+.install-steps li + li { margin-top: 7px; }
 .panel-status { font-weight: 400; }
 .panel-status.stale { color: var(--accent); font-weight: 650; }
 
 /* ---- Statistics -------------------------------------------------------- */
 .stats {
-  margin-top: 18px;
-  padding-top: 6px;
-  border-top: 1px solid var(--line);
+  padding-bottom: 20px;
 }
 
 .stat-block { margin-top: 20px; }

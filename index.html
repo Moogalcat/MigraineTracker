@@ -38,20 +38,25 @@
   <p class="empty" id="empty" hidden>
     No entries yet.<br>
     Tap <strong>Log migraine</strong> when one starts. The entry opens straight
-    away, so you can set triggers, intensity and notes &mdash; or change the date
+    away, so you can set triggers, aura and headache intensity, and notes &mdash; or change the date
     and time to record an attack from the past.
   </p>
 
-  <div class="actions actions-late">
-    <button type="button" id="statsToggle" class="btn btn-ghost" aria-expanded="false" aria-controls="stats">
-      Statistics<span class="panel-status" id="statsStatus"></span>
-    </button>
-  </div>
-
-  <div class="stats" id="stats" hidden></div>
 </main>
 
 <footer class="footer">
+  <details>
+    <summary>Statistics<span class="panel-status" id="statsStatus"></span></summary>
+    <div class="stats" id="stats"></div>
+  </details>
+  <details>
+    <summary>Install this app</summary>
+    <ul class="install-steps">
+      <li><strong>Edge or Chrome on a computer:</strong> open the browser menu, choose <strong>Apps</strong>, then <strong>Install this site as an app</strong>.</li>
+      <li><strong>Android:</strong> open the site in Chrome, then choose <strong>Install app</strong> or <strong>Add to Home screen</strong> from the menu.</li>
+      <li><strong>iPhone or iPad:</strong> open the site in Safari, tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.</li>
+    </ul>
+  </details>
   <details>
     <summary>Backup &amp; data<span class="panel-status" id="backupStatus"></span></summary>
     <p class="note">
@@ -86,8 +91,12 @@
         <div class="chips" data-chips="triggers"></div>
       </fieldset>
       <fieldset class="control-group intensity-group">
-        <legend>Intensity <span class="hint">afterward</span></legend>
-        <div class="chips" data-chips="intensity"></div>
+        <legend>Aura intensity</legend>
+        <div class="chips" data-chips="auraIntensity"></div>
+      </fieldset>
+      <fieldset class="control-group intensity-group">
+        <legend>Headache intensity</legend>
+        <div class="chips" data-chips="headacheIntensity"></div>
       </fieldset>
       <label class="entry-notes-label">Notes</label>
       <textarea data-field="notes" rows="3" placeholder="Anything else worth remembering&hellip;"></textarea>

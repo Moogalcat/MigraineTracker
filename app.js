@@ -61,17 +61,22 @@ function load() {
   return parsed.filter(valid).map(normalise);
 }
 
-// Entries saved before triggers and intensity existed simply have neither.
+// Older entries used one ambiguous `intensity` field. Preserve it as headache
+// intensity, which is the least surprising interpretation of the old label.
 function normalise(e) {
   const triggers = Array.isArray(e.triggers)
     ? e.triggers.filter((t) => typeof t === 'string' && t.trim()).map((t) => t.trim())
     : [];
+  const legacyIntensity = INTENSITIES.includes(e.intensity) ? e.intensity : null;
   return {
     id: String(e.id || uid()),
     at: e.at,
     notes: typeof e.notes === 'string' ? e.notes : '',
     triggers: [...new Set(triggers)].slice(0, 24),
-    intensity: INTENSITIES.includes(e.intensity) ? e.intensity : null,
+    auraIntensity: INTENSITIES.includes(e.auraIntensity) ? e.auraIntensity : null,
+    headacheIntensity: INTENSITIES.includes(e.headacheIntensity)
+      ? e.headacheIntensity
+      : legacyIntensity,
   };
 }
 
@@ -124,11 +129,12 @@ function uid() {
 }
 
 // Identifies an entry by content, to skip duplicates on import. Two entries
-// that differ only in their triggers or intensity are genuinely different.
+// that differ only in their triggers or either intensity are genuinely different.
 function contentKey(e) {
   return [
     e.at,
-    e.intensity || '',
+    e.auraIntensity || '',
+    e.headacheIntensity || '',
     [...e.triggers].sort().join(','),
     e.notes,
   ].join('|');
@@ -209,7 +215,8 @@ function render() {
     const notesId = `entry-notes-${index}`;
 
     li.dataset.id = entry.id;
-    if (entry.intensity) li.classList.add(`severity-${entry.intensity.toLowerCase()}`);
+    const overallIntensity = strongestIntensity(entry);
+    if (overallIntensity) li.classList.add(`severity-${overallIntensity.toLowerCase()}`);
     head.setAttribute('aria-expanded', 'false');
     head.setAttribute('aria-controls', bodyId);
     body.id = bodyId;
@@ -251,10 +258,14 @@ function render() {
 function renderEntryMeta(el, entry) {
   el.textContent = '';
 
-  if (entry.intensity) {
+  for (const [label, intensity] of [
+    ['Aura', entry.auraIntensity],
+    ['Headache', entry.headacheIntensity],
+  ]) {
+    if (!intensity) continue;
     const badge = document.createElement('span');
-    badge.className = `badge badge-${entry.intensity.toLowerCase()}`;
-    badge.textContent = entry.intensity;
+    badge.className = `badge badge-${intensity.toLowerCase()}`;
+    badge.textContent = `${label} ${intensity}`;
     el.appendChild(badge);
   }
 
@@ -263,6 +274,13 @@ function renderEntryMeta(el, entry) {
     t.textContent = entry.triggers.join(' · ');
     el.appendChild(t);
   }
+}
+
+function strongestIntensity(entry) {
+  const levels = [entry.auraIntensity, entry.headacheIntensity]
+    .map((value) => INTENSITIES.indexOf(value));
+  const strongest = Math.max(...levels);
+  return strongest >= 0 ? INTENSITIES[strongest] : null;
 }
 
 function renderTally() {
@@ -387,6 +405,17 @@ function monthlyCounts(list, months = 6) {
   return out;
 }
 
+function yearlyCounts(list) {
+  const tally = new Map();
+  for (const entry of list) {
+    const year = new Date(entry.at).getFullYear();
+    tally.set(year, (tally.get(year) || 0) + 1);
+  }
+  return [...tally.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([year, count]) => ({ label: String(year), count }));
+}
+
 function triggerCounts(list) {
   const tally = new Map();
   for (const e of list) {
@@ -450,6 +479,17 @@ function renderStats() {
   }
   box.appendChild(byMonth);
 
+  // Avoid a redundant one-row chart until the log spans two calendar years.
+  const years = yearlyCounts(list);
+  if (years.length > 1) {
+    const yearPeak = Math.max(...years.map((year) => year.count), 1);
+    const byYear = statBlock('By year');
+    for (const year of years) {
+      byYear.appendChild(statRow(year.label, String(year.count), year.count / yearPeak));
+    }
+    box.appendChild(byYear);
+  }
+
   // --- Triggers ---------------------------------------------------------
   const triggers = triggerCounts(list);
   const byTrigger = statBlock('Most common triggers');
@@ -466,14 +506,16 @@ function renderStats() {
   }
   box.appendChild(byTrigger);
 
-  // --- Intensity --------------------------------------------------------
-  const counts = INTENSITIES.map((level) => [
-    level, list.filter((e) => e.intensity === level).length,
-  ]);
-  const unrated = list.filter((e) => !e.intensity).length;
+  appendIntensityStats(box, list, 'Aura intensity', 'auraIntensity');
+  appendIntensityStats(box, list, 'Headache intensity', 'headacheIntensity');
+}
+
+function appendIntensityStats(box, list, title, field) {
+  const counts = INTENSITIES.map((level) => [level, list.filter((e) => e[field] === level).length]);
+  const unrated = list.filter((e) => !e[field]).length;
   const intensityPeak = Math.max(...counts.map(([, n]) => n), unrated, 1);
 
-  const byIntensity = statBlock('Intensity');
+  const byIntensity = statBlock(title);
   for (const [level, n] of counts) {
     byIntensity.appendChild(
       statRow(level, String(n), n / intensityPeak, `--${level.toLowerCase()}`)
@@ -494,7 +536,7 @@ function triggerOptions(selected) {
 }
 
 function renderChips(row, selected) {
-  const intensity = row.dataset.chips === 'intensity';
+  const intensity = row.dataset.chips !== 'triggers';
   const options = intensity ? INTENSITIES : triggerOptions(selected);
 
   row.textContent = '';
@@ -538,9 +580,11 @@ function renderChips(row, selected) {
 
 function fillChips(scope, entry) {
   const t = scope.querySelector('[data-chips="triggers"]');
-  const i = scope.querySelector('[data-chips="intensity"]');
+  const aura = scope.querySelector('[data-chips="auraIntensity"]');
+  const headache = scope.querySelector('[data-chips="headacheIntensity"]');
   if (t) renderChips(t, entry.triggers || []);
-  if (i) renderChips(i, entry.intensity ? [entry.intensity] : []);
+  if (aura) renderChips(aura, entry.auraIntensity ? [entry.auraIntensity] : []);
+  if (headache) renderChips(headache, entry.headacheIntensity ? [entry.headacheIntensity] : []);
 }
 
 function readChips(scope, kind) {
@@ -612,8 +656,8 @@ function handleChipClick(ev) {
   const row = chip.closest('[data-chips]');
   const wasOn = chip.classList.contains('on');
 
-  // Intensity is a single choice; tapping the current one clears it.
-  if (row.dataset.chips === 'intensity') {
+  // Each intensity row is single-choice; tapping its current value clears it.
+  if (row.dataset.chips !== 'triggers') {
     for (const c of row.querySelectorAll('.chip.on')) {
       c.classList.remove('on');
       c.setAttribute('aria-pressed', 'false');
@@ -673,7 +717,8 @@ list.addEventListener('click', (ev) => {
         at: date.toISOString(),
         notes: notesInput.value,
         triggers: readChips(li, 'triggers'),
-        intensity: readChips(li, 'intensity')[0] || null,
+        auraIntensity: readChips(li, 'auraIntensity')[0] || null,
+        headacheIntensity: readChips(li, 'headacheIntensity')[0] || null,
       };
       const nextEntries = entries.map((e) => e.id === id ? updated : e);
       if (!persistEntries(nextEntries)) {
@@ -720,7 +765,8 @@ list.addEventListener('click', (ev) => {
 
 $('logNow').addEventListener('click', () => {
   const entry = {
-    id: uid(), at: new Date().toISOString(), notes: '', triggers: [], intensity: null,
+    id: uid(), at: new Date().toISOString(), notes: '', triggers: [],
+    auraIntensity: null, headacheIntensity: null,
   };
   if (!persistEntries([...entries, entry])) {
     toast('Could not log — device storage is full or blocked');
@@ -732,15 +778,6 @@ $('logNow').addEventListener('click', () => {
 
   const card = list.querySelector(`.entry[data-id="${CSS.escape(entry.id)}"]`);
   if (card) card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-});
-
-const statsToggle = $('statsToggle');
-
-statsToggle.addEventListener('click', () => {
-  const stats = $('stats');
-  const opening = stats.hidden;
-  stats.hidden = !opening;
-  statsToggle.setAttribute('aria-expanded', String(opening));
 });
 
 /* ---- Backup ------------------------------------------------------------ */

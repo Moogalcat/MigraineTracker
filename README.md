@@ -1,8 +1,8 @@
 # Migraine Log
 
 A small installable web app (PWA) for logging migraine attacks. Each entry is a
-date + time, optional triggers and intensity, and a free-text note. All of it
-stays editable forever.
+date + time, optional triggers, separate aura and headache intensities, and a
+free-text note. All of it stays editable forever.
 
 - **One tap to log** — "Log migraine" stamps the current time immediately
   and asks nothing else.
@@ -10,12 +10,12 @@ stays editable forever.
   fill in what you know now and the rest later without hunting for the entry.
 - **Triggers you tap, not type** — twelve common ones built in, plus up to six
   of your own.
-- **Intensity afterwards** — you don't know how bad it was until it's over, so
-  it's never asked for up front.
+- **Separate intensities afterwards** — aura and headache can differ, so each
+  has its own optional Mild / Moderate / Severe rating.
 - **Any time, any date** — change an entry's date and time to record a past
   attack, or to correct one later.
-- **Statistics** — frequency by month, your most common triggers and an
-  intensity breakdown, from the entries you already have.
+- **Statistics** — frequency by month, your most common triggers and separate
+  aura and headache intensity breakdowns, from the entries you already have.
 - **Works offline** — once installed it opens with no network at all.
 - **Private** — entries live in your browser's `localStorage` on that device.
   Nothing is uploaded, there is no account, and there is no server to trust.
@@ -78,7 +78,10 @@ server in any case: entries never leave your device.
 `.nojekyll` is there only so the repo also works on GitHub Pages unchanged, if
 you ever switch.
 
-## Install on your phone
+## Install the app
+
+- **Windows / macOS** — open the URL in Edge or Chrome, open the browser menu,
+  choose **Apps**, then **Install this site as an app**.
 
 - **iPhone / iPad** — open the URL in **Safari** (not Chrome), tap the Share
   button, then **Add to Home Screen**.
@@ -94,10 +97,11 @@ The page is ordered by how often you need each part:
 1. **Log migraine** — the only thing that matters mid-attack, so it is
    first and is a single tap.
 2. **The log itself** — newest first. A new entry arrives already open, with
-   its date, triggers, intensity and notes all editable in place; tap any
-   older entry to open it the same way.
-3. **Statistics** — a button that reveals the summary below it.
-4. **Backup & data** — last, since it is the least frequently needed.
+   its date, triggers, aura and headache intensities, and notes all editable in
+   place; tap any older entry to open it the same way.
+3. **Statistics** — an expandable section matching the other utilities.
+4. **Install this app** — platform-specific installation help.
+5. **Backup & data** — last, since it is the least frequently needed.
 
 There is no separate "add a past entry" form. A past attack is just a normal
 entry with its date changed, and because a new entry opens with its date field
@@ -115,15 +119,18 @@ entry remains and can be removed with **Delete**.
 
 ### Statistics
 
-A button rather than a disclosure, carrying the useful headline in its own
-label (`Statistics — last one 6 days ago`). Pressing it reveals four blocks:
+An expandable disclosure carries the useful headline in its summary
+(`Statistics — last one 6 days ago`). Opening it reveals five core blocks, with
+an additional yearly comparison once the log spans two calendar years:
 
 | Block | Shows |
 | --- | --- |
 | Overview | How many logged, how long since the last one, typical gap between attacks, date first logged |
 | Last six months | A count per month, as a bar |
+| By year | One bar per calendar year; appears once at least two years are represented |
 | Most common triggers | Your triggers ranked by frequency, top eight |
-| Intensity | Mild / Moderate / Severe counts, plus how many are unrated, in the severity colours |
+| Aura intensity | Mild / Moderate / Severe counts, plus how many are unrated |
+| Headache intensity | Mild / Moderate / Severe counts, plus how many are unrated |
 
 Like the header counts, statistics describe **what has happened** — entries
 dated in the future are excluded. "Typical gap" is the mean interval between
@@ -158,7 +165,7 @@ mistyped date) the header says so explicitly, e.g.
 `0 entries this month — 0 in the last 90 days · 1 dated in the future`, so a
 typo cannot quietly disappear from the counts while its card sits in the list.
 
-## Triggers and intensity
+## Triggers and intensities
 
 The built-in trigger list is the twelve most commonly reported ones:
 
@@ -174,8 +181,13 @@ Removing one of your own triggers only stops it being offered — entries that
 already carry that label keep it, and it reappears as a chip whenever such an
 entry is open. Deleting a trigger never rewrites history.
 
-Intensity is **Mild / Moderate / Severe**, single-choice, and tapping the
-current one clears it. It is intentionally absent from the one-tap path.
+Aura intensity and headache intensity are separate optional fields. Each is
+**Mild / Moderate / Severe**, single-choice, and tapping the current choice
+clears it. Both are intentionally absent from the one-tap path.
+
+Entries created before the fields were split keep their existing rating as
+headache intensity. Aura intensity remains unset, so no historical value is
+invented.
 
 To change either list, edit `BUILT_IN_TRIGGERS` or `INTENSITIES` at the top of
 `app.js`. Entries store trigger labels as plain strings, so renaming a built-in
@@ -220,7 +232,8 @@ A backup is a plain JSON array, easy to read or hand-edit:
     "id": "mty9eksz6g7525",
     "at": "2026-09-09T12:30:00.000Z",
     "triggers": ["Stress", "Poor sleep"],
-    "intensity": "Severe",
+    "auraIntensity": "Moderate",
+    "headacheIntensity": "Severe",
     "notes": "..."
   }
 ]
@@ -229,8 +242,9 @@ A backup is a plain JSON array, easy to read or hand-edit:
 `at` is always UTC; the app converts to local time for display. `id` is
 regenerated on import, so you can safely delete or duplicate entries in the file
 by hand. An object of the form `{ "entries": [...] }` is also accepted, and
-older backups without `triggers` or `intensity` import fine — they come in with
-no triggers and no intensity set.
+older backups without triggers or ratings import fine. Backups containing the
+old single `intensity` field import it as headache intensity and leave aura
+intensity unset.
 
 After an import, the confirmation reports imported entries, exact duplicates,
 and invalid records separately. A damaged record is never silently treated as
@@ -257,9 +271,13 @@ blue-grey accent, ruled entry rows, and a serif title. Secondary text and
 repeated control outlines are deliberately subdued so they do not form a
 bright visual grid. The palette avoids pure white, pure black, and bright
 saturated surfaces. Pills, gradients, and stacked floating cards are avoided.
+Editor sections use generous vertical spacing so date, trigger, aura intensity,
+headache intensity and notes controls remain easy to distinguish without
+stronger borders.
 
-Mild, Moderate and Severe use muted green, amber and rose respectively in the
-picker, entry marker and statistics. The colours remain distinct without
+Mild, Moderate and Severe use muted green, amber and rose respectively in both
+pickers, the entry marker and statistics. The entry marker reflects the
+stronger of the two recorded ratings. The colours remain distinct without
 turning large areas of the screen bright, keeping the interface calmer for
 light-sensitive users and people experiencing aura.
 
