@@ -1,6 +1,6 @@
 /* Service worker: makes the app load and work with no network at all.
    Bump CACHE when you change any of the files below. */
-const CACHE = 'migraine-log-v10';
+const CACHE = 'migraine-log-v11';
 
 const SHELL = [
   '.',
@@ -15,9 +15,12 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (event) => {
+  // `cache: 'reload'` forces each request past the HTTP cache, so a new
+  // version never precaches a stale copy of the shell it is meant to replace.
+  const fresh = SHELL.map((path) => new Request(path, { cache: 'reload' }));
   event.waitUntil(
     caches.open(CACHE)
-      .then((cache) => cache.addAll(SHELL))
+      .then((cache) => cache.addAll(fresh))
       .then(() => self.skipWaiting())
   );
 });
@@ -39,10 +42,27 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // Navigations: serve the cached shell so the app opens instantly offline.
+  // Navigations: serve the cached shell so the app opens instantly offline,
+  // then refresh it in the background so the next launch is up to date even
+  // if this cache version somehow holds an old copy.
   if (req.mode === 'navigate') {
     event.respondWith(
-      caches.match('index.html').then((hit) => hit || fetch(req))
+      caches.match('index.html').then((hit) => {
+        const fromNetwork = fetch(new Request('index.html', { cache: 'reload' }))
+          .then((res) => {
+            if (res && res.ok) {
+              caches.open(CACHE).then((cache) => cache.put('index.html', res.clone()));
+            }
+            return res;
+          })
+          .catch(() => hit);
+
+        if (hit) {
+          event.waitUntil(fromNetwork.catch(() => {}));
+          return hit;
+        }
+        return fromNetwork;
+      })
     );
     return;
   }

@@ -232,8 +232,19 @@ three written lines. `tools/make-icons.ps1` is the source for all icon sizes.
 
 Edit the files and reload. One thing to remember: when you change
 `index.html`, `styles.css` or `app.js`, bump the `CACHE` constant at the top of
-`sw.js` (e.g. `migraine-log-v2`). That is what tells installed copies to throw
-away the old cached files and pick up the new ones.
+`sw.js`. That is what tells installed copies to throw away the old cached files
+and pick up the new ones.
+
+The worker precaches the shell with `cache: 'reload'` so each request goes past
+the HTTP cache. Without that, a worker installing shortly after a deploy can
+precache the *previous* page — GitHub Pages serves HTML with `max-age=600`, so
+the browser may still hold a fresh-enough copy of the old file — and then pin
+it for the life of that cache version. Navigations are also revalidated in the
+background, so a stale shell heals on the next launch rather than waiting for
+another version bump.
+
+Because the shell is served cache-first, the first launch after a deploy still
+shows the previous version; the one after it is current.
 
 The icons are generated, not hand-drawn. To change the colours or the glyph,
 edit `tools/make-icons.ps1` and re-run it:
