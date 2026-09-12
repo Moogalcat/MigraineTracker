@@ -1,0 +1,3 @@
+# Not a migraine diary you want in search results.
+User-agent: *
+Disallow: /

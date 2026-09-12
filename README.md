@@ -23,6 +23,7 @@ No build step, no dependencies, no framework. Plain HTML, CSS and JavaScript.
 | `manifest.webmanifest` | Makes it installable |
 | `icons/` | App icons (generated PNGs) |
 | `tools/make-icons.ps1` | Regenerates the icons |
+| `_headers`, `robots.txt` | Hosting headers; keeps the site unindexed |
 
 ## Run it locally
 
@@ -35,17 +36,33 @@ service workers need `http://localhost` or HTTPS.
 
 ## Put it online
 
-Service workers require HTTPS, so it needs hosting. GitHub Pages is free and
-enough:
+Service workers require HTTPS, so the app needs hosting. There is no build
+step, so any static host works — point it at the repo root.
 
-```bash
-git init && git add -A && git commit -m "Migraine Log"
-```
+This repo deploys via **Cloudflare Pages**, which serves a public site from a
+*private* GitHub repo on the free plan (GitHub Pages cannot: Pages from a
+private repo needs a paid GitHub plan).
 
-Create an empty repo on GitHub, push to it, then in the repo's
-**Settings → Pages** set *Source* to `main` / `/ (root)`. Your app appears at
-`https://<user>.github.io/<repo>/` within a minute or two. Netlify Drop and
-Cloudflare Pages work the same way if you'd rather drag the folder in.
+1. Sign in at <https://dash.cloudflare.com> → **Workers & Pages** →
+   **Create** → **Pages** → **Connect to Git**.
+2. Authorize Cloudflare's GitHub app. Choose *Only select repositories* and
+   pick just this one.
+3. Select the repo, branch `main`.
+4. Build settings: framework preset **None**, build command **empty**, build
+   output directory **`/`**.
+5. **Save and Deploy.**
+
+The site lands at `https://<project>.pages.dev`, and every `git push` to `main`
+redeploys it.
+
+`_headers` sets `X-Robots-Tag: noindex` site-wide and `Cache-Control: no-cache`
+on `sw.js`; `robots.txt` disallows crawlers. Note that neither is access
+control — **anyone with the URL can open the app**. They only keep it out of
+search results. The app holds no data of yours on the server in any case:
+entries never leave your device.
+
+`.nojekyll` is there only so the repo also works on GitHub Pages unchanged, if
+you ever switch.
 
 ## Install on your phone
 
