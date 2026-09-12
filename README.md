@@ -4,7 +4,7 @@ A small installable web app (PWA) for logging migraine attacks. Each entry is a
 date + time, optional triggers and intensity, and a free-text note. All of it
 stays editable forever.
 
-- **One tap to log** — "Log migraine now" stamps the current time immediately
+- **One tap to log** — "Log migraine" stamps the current time immediately
   and asks nothing else.
 - **The entry opens itself** — the whole editor appears in place, so you can
   fill in what you know now and the rest later without hunting for the entry.
@@ -91,7 +91,7 @@ It then launches full-screen with its own icon, like any other app.
 
 The page is ordered by how often you need each part:
 
-1. **Log migraine now** — the only thing that matters mid-attack, so it is
+1. **Log migraine** — the only thing that matters mid-attack, so it is
    first and is a single tap.
 2. **The log itself** — newest first. A new entry arrives already open, with
    its date, triggers, intensity and notes all editable in place; tap any
