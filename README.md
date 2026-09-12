@@ -81,9 +81,16 @@ clear site data, or reset the phone — and it does not sync between devices. Op
 **Import backup** merges a file back in, skipping entries it already has, so you
 can also use export/import to move your history to another device.
 
-The **Backup & data** heading tells you when the file on disk is out of date:
-it shows how many changes you've made since your last export, or when that
-export happened. Exporting again clears it.
+Every export writes a **new file**, named for the moment you made it, e.g.
+`migraine-log-2026-09-12-13-13.json`. It does not overwrite the previous one —
+a web page cannot overwrite a file on disk, and a browser download that clashes
+with an existing name just gets ` (1)` appended. So your Downloads folder
+accumulates snapshots. The names sort chronologically, so the newest one is
+always the last in the list, and that is the one to keep and to import.
+
+The **Backup & data** heading tells you when your newest export is out of date:
+it shows how many changes you've made since the last one, or when it happened.
+Exporting again clears it.
 
 Deleting an entry removes it from the app immediately, but it cannot change a
 backup file you already saved — a web page has no way to edit a file on disk.
