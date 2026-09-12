@@ -27,7 +27,7 @@ function Write-Icon([string]$file, [int]$size, [double]$radiusFrac, [double]$con
     # Background: solid charcoal, matching the app's quiet logbook palette.
     $rect  = New-Object System.Drawing.RectangleF(0, 0, $size, $size)
     $brush = New-Object System.Drawing.SolidBrush(
-        [System.Drawing.Color]::FromArgb(255, 30, 36, 36))
+        [System.Drawing.Color]::FromArgb(255, 37, 42, 44))
 
     if ($radiusFrac -gt 0) {
         $path = New-RoundedPath 0 0 $size $size ([single]($size * $radiusFrac))
@@ -47,11 +47,11 @@ function Write-Icon([string]$file, [int]$size, [double]$radiusFrac, [double]$con
     $paperH = [single]($u * 1.76)
     $paperPath = New-RoundedPath $paperX $paperY $paperW $paperH ([single]($u * 0.10))
     $paperBrush = New-Object System.Drawing.SolidBrush(
-        [System.Drawing.Color]::FromArgb(255, 243, 240, 233))
+        [System.Drawing.Color]::FromArgb(255, 226, 224, 218))
     $g.FillPath($paperBrush, $paperPath)
 
     $accentPen = New-Object System.Drawing.Pen(
-        [System.Drawing.Color]::FromArgb(255, 169, 71, 53), [single]($u * 0.12))
+        [System.Drawing.Color]::FromArgb(255, 111, 135, 144), [single]($u * 0.12))
     $accentPen.StartCap = 'Round'; $accentPen.EndCap = 'Round'
     $spineX = [single]($paperX + $u * 0.32)
     $g.DrawLine($accentPen, $spineX, [single]($paperY + $u * 0.22),

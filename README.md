@@ -104,10 +104,14 @@ entry with its date changed, and because a new entry opens with its date field
 right there, that takes the same number of taps a dedicated form would — with
 one screen to learn instead of two.
 
-Logging is committed the instant you tap, before the editor opens. **Cancel**
-therefore discards your unsaved edits but keeps the entry; it is not an undo
-for the log itself. That is deliberate — an entry should never be lost because
-the app closed mid-typing. Delete an unwanted entry with **Delete**.
+Logging is committed the instant you tap, before the editor opens, so the
+timestamp survives if the app closes mid-typing. Until you save that new entry,
+its secondary action is **Discard**: it removes the whole entry and reverses the
+backup-change count without another confirmation. **Delete** is hidden while
+Discard is available, so there is only one way to abandon a fresh entry. After
+the first save, **Cancel** only abandons the current edits and **Delete** removes
+the existing entry. If the app was closed before that first save, the crash-safe
+entry remains and can be removed with **Delete**.
 
 ### Statistics
 
@@ -247,11 +251,17 @@ on a phone and during an attack.
 
 ## Visual design
 
-The interface uses a quiet logbook vocabulary: warm paper tones in light mode,
-near-black neutral tones in dark mode, restrained terracotta accents, ruled
-entry rows, and a serif title. Pills, gradients, and stacked floating cards are
-deliberately avoided. Severity appears as a small edge marker rather than a
-large coloured surface, keeping the screen calm for light-sensitive users.
+The interface uses a quiet logbook vocabulary: low-glare warm grey tones in
+light mode, closely stepped charcoal tones in dark mode, a desaturated
+blue-grey accent, ruled entry rows, and a serif title. Secondary text and
+repeated control outlines are deliberately subdued so they do not form a
+bright visual grid. The palette avoids pure white, pure black, and bright
+saturated surfaces. Pills, gradients, and stacked floating cards are avoided.
+
+Mild, Moderate and Severe use muted green, amber and rose respectively in the
+picker, entry marker and statistics. The colours remain distinct without
+turning large areas of the screen bright, keeping the interface calmer for
+light-sensitive users and people experiencing aura.
 
 The app icon follows the same system: a simple paper log, accent spine, and
 three written lines. `tools/make-icons.ps1` is the source for all icon sizes.

@@ -1,18 +1,19 @@
 :root {
-  --bg: #f3f0e9;
-  --surface: #fbfaf6;
-  --surface-2: #ece8df;
-  --text: #202423;
-  --text-dim: #666a66;
-  --line: #d4d0c7;
-  --line-strong: #aaa69d;
-  --accent: #a94735;
-  --accent-hover: #913a2c;
-  --accent-text: #fffaf5;
-  --danger: #9c302f;
-  --mild: #44735c;
-  --moderate: #a06a22;
-  --severe: #a94735;
+  --bg: #eceae5;
+  --surface: #f1efea;
+  --surface-2: #e2e0da;
+  --text: #333634;
+  --text-dim: #666b67;
+  --line: #d3d1ca;
+  --line-strong: #aaa9a3;
+  --accent: #536f78;
+  --accent-hover: #49636b;
+  --accent-text: #f3f1ec;
+  --danger: #86575a;
+  --mild: #4c6d5c;
+  --moderate: #755f35;
+  --severe: #86575a;
+  --choice-text: #fffaf5;
   --radius: 8px;
   --pad: 18px;
   --safe-b: env(safe-area-inset-bottom, 0px);
@@ -21,25 +22,27 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #111416;
-    --surface: #191d1f;
-    --surface-2: #222729;
-    --text: #eeeae2;
-    --text-dim: #aaa9a3;
-    --line: #34393a;
-    --line-strong: #595e5e;
-    --accent: #cc6d58;
-    --accent-hover: #db7b65;
-    --accent-text: #17100e;
-    --danger: #ec817b;
-    --mild: #78b091;
-    --moderate: #d2a05c;
-    --severe: #df7464;
+    --bg: #1b1e20;
+    --surface: #202426;
+    --surface-2: #262b2d;
+    --text: #c1c0ba;
+    --text-dim: #858986;
+    --line: #2c3234;
+    --line-strong: #3b4244;
+    --accent: #7b8e96;
+    --accent-hover: #8599a1;
+    --accent-text: #161b1d;
+    --danger: #b9787c;
+    --mild: #789683;
+    --moderate: #a48b60;
+    --severe: #a87579;
+    --choice-text: #161b1d;
     color-scheme: dark;
   }
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
@@ -191,10 +194,10 @@ input:focus-visible, textarea:focus-visible, button:focus-visible, summary:focus
 .chip {
   min-height: 44px;
   padding: 8px 12px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: 6px;
-  background: transparent;
-  color: var(--text);
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  color: var(--text-dim);
   font: inherit;
   font-size: 0.87rem;
   cursor: pointer;
@@ -204,10 +207,33 @@ input:focus-visible, textarea:focus-visible, button:focus-visible, summary:focus
 .chip.on { border-color: var(--accent); background: var(--accent); color: var(--accent-text); font-weight: 650; }
 .chip-add { border-style: dashed; color: var(--text-dim); }
 .chip-wrap.has-x .chip { border-right: 0; border-radius: 6px 0 0 6px; }
-.chip-x { min-width: 44px; min-height: 44px; padding: 7px 10px; border: 1px solid var(--line-strong); border-radius: 0 6px 6px 0; background: transparent; color: var(--text-dim); font: inherit; font-size: 1rem; cursor: pointer; }
+.chip-x { min-width: 44px; min-height: 44px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 0 6px 6px 0; background: color-mix(in srgb, var(--surface) 72%, transparent); color: var(--text-dim); font: inherit; font-size: 1rem; cursor: pointer; }
 .chip-x:hover { color: var(--danger); }
 .intensity-group .chips { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .intensity-group .chip-wrap, .intensity-group .chip { width: 100%; }
+.intensity-group .chip[data-value="Mild"] {
+  border-color: color-mix(in srgb, var(--mild) 28%, var(--line));
+  background: color-mix(in srgb, var(--mild) 5%, transparent);
+  color: var(--mild);
+}
+.intensity-group .chip[data-value="Moderate"] {
+  border-color: color-mix(in srgb, var(--moderate) 28%, var(--line));
+  background: color-mix(in srgb, var(--moderate) 5%, transparent);
+  color: var(--moderate);
+}
+.intensity-group .chip[data-value="Severe"] {
+  border-color: color-mix(in srgb, var(--severe) 28%, var(--line));
+  background: color-mix(in srgb, var(--severe) 5%, transparent);
+  color: var(--severe);
+}
+.intensity-group .chip[data-value="Mild"].on,
+.intensity-group .chip[data-value="Moderate"].on,
+.intensity-group .chip[data-value="Severe"].on {
+  color: var(--choice-text);
+}
+.intensity-group .chip[data-value="Mild"].on { border-color: var(--mild); background: var(--mild); }
+.intensity-group .chip[data-value="Moderate"].on { border-color: var(--moderate); background: var(--moderate); }
+.intensity-group .chip[data-value="Severe"].on { border-color: var(--severe); background: var(--severe); }
 .hint { font-weight: 400; opacity: 0.85; }
 
 .entry.open .chev { transform: rotate(180deg); }

@@ -28,6 +28,9 @@ let meta = loadMeta();
 // Entry id to open on the next render - a freshly logged entry shows its whole
 // editor rather than making you tap to open it.
 let openOnRender = null;
+// Entries logged in this session remain cancellable until their first save.
+// They are still written immediately, so an app close cannot lose the timestamp.
+const freshEntryIds = new Set();
 let customTriggers = loadCustomTriggers();
 
 /* ---- Storage ----------------------------------------------------------- */
@@ -103,7 +106,7 @@ function persistEntries(nextEntries) {
 
 // Call after any edit, so the backup status can flag a stale export file.
 function markChanged(n = 1) {
-  const nextMeta = { ...meta, pending: meta.pending + n };
+  const nextMeta = { ...meta, pending: Math.max(0, meta.pending + n) };
   if (!writeJSON(META_KEY, nextMeta)) return false;
   meta = nextMeta;
   renderBackupStatus();
@@ -221,6 +224,14 @@ function render() {
     notesInput.value = entry.notes;
     renderEntryMeta(li.querySelector('.entry-meta'), entry);
     fillChips(li, entry);
+
+    if (freshEntryIds.has(entry.id)) {
+      const cancel = li.querySelector('[data-act="cancel"]');
+      cancel.textContent = 'Discard';
+      cancel.classList.remove('btn-ghost');
+      cancel.classList.add('btn-danger');
+      li.querySelector('[data-act="delete"]').hidden = true;
+    }
 
     if (openIds.has(entry.id)) {
       li.classList.add('open');
@@ -669,12 +680,22 @@ list.addEventListener('click', (ev) => {
         toast('Could not save — device storage is full or blocked');
         return;
       }
+      freshEntryIds.delete(id);
       li.classList.remove('open');
       finishChange('Saved');
       break;
     }
 
     case 'cancel': {
+      if (freshEntryIds.has(id)) {
+        if (!persistEntries(entries.filter((e) => e.id !== id))) {
+          toast('Could not discard — device storage is full or blocked');
+          return;
+        }
+        freshEntryIds.delete(id);
+        finishChange('Entry discarded', -1);
+        return;
+      }
       li.classList.remove('open');
       li.querySelector('.entry-head').setAttribute('aria-expanded', 'false');
       body.hidden = true;
@@ -683,11 +704,13 @@ list.addEventListener('click', (ev) => {
 
     case 'delete': {
       if (!confirm(`Delete the entry from ${describe(new Date(entry.at))}?`)) return;
+      const wasFresh = freshEntryIds.has(id);
       if (!persistEntries(entries.filter((e) => e.id !== id))) {
         toast('Could not delete — device storage is full or blocked');
         return;
       }
-      finishChange('Entry deleted');
+      freshEntryIds.delete(id);
+      finishChange('Entry deleted', wasFresh ? -1 : 1);
       break;
     }
   }
@@ -703,6 +726,7 @@ $('logNow').addEventListener('click', () => {
     toast('Could not log — device storage is full or blocked');
     return;
   }
+  freshEntryIds.add(entry.id);
   openOnRender = entry.id;
   finishChange('Logged — add details or change the date below');
 
