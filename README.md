@@ -55,11 +55,15 @@ private repo needs a paid GitHub plan).
 The site lands at `https://<project>.pages.dev`, and every `git push` to `main`
 redeploys it.
 
-`_headers` sets `X-Robots-Tag: noindex` site-wide and `Cache-Control: no-cache`
-on `sw.js`; `robots.txt` disallows crawlers. Note that neither is access
-control — **anyone with the URL can open the app**. They only keep it out of
-search results. The app holds no data of yours on the server in any case:
-entries never leave your device.
+Search engines are asked to stay away three times over, so it works whichever
+host you use: a `noindex` meta tag in `index.html` (honoured anywhere),
+`robots.txt` (honoured anywhere), and `_headers` setting `X-Robots-Tag`
+(**Cloudflare only** — GitHub Pages ignores `_headers` entirely, as it does the
+`Cache-Control: no-cache` that file sets on `sw.js`).
+
+None of that is access control — **anyone with the URL can open the app**. It
+only keeps it out of search results. The app holds no data of yours on the
+server in any case: entries never leave your device.
 
 `.nojekyll` is there only so the repo also works on GitHub Pages unchanged, if
 you ever switch.
