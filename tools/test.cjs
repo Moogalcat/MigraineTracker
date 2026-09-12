@@ -1,0 +1,180 @@
+/* Run with node --test tools/test.cjs. No packages or build step required. */
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const path = require('node:path');
+const D = require('../data.js');
+const at = '2026-09-10T10:00:00.000Z';
+const row = (overrides = {}) => D.normalise({ id: 'attack-1', at, notes: 'Original', ...overrides });
+const state = (entries = []) => ({ ...D.empty(), entries });
+
+test('legacy ratings migrate without inventing an aura rating', () => {
+  const e = D.parse([{ at, intensity: 'Severe' }], true).entries[0];
+  assert.equal(e.headacheIntensity, 'Severe'); assert.equal(e.auraIntensity, null);
+  assert.equal('endedAt' in e, false); assert.equal('medication' in e, false);
+});
+test('retired None ratings migrate to unselected through a full backup round trip', () => {
+  const original = { ...state([row({ auraIntensity: 'None' })]), customTriggers: ['Travel'], preferences: { theme: 'dark' } };
+  const restored = D.parse(JSON.parse(JSON.stringify(original)), true);
+  assert.equal(restored.entries[0].auraIntensity, null);
+  assert.equal(restored.entries[0].headacheIntensity, null);
+  assert.deepEqual(restored.customTriggers, ['Travel']); assert.equal(restored.preferences.theme, 'dark');
+});
+test('strict saved-data reading rejects corruption instead of dropping records', () => {
+  for (const value of [{}, { entries: [row(), { at: 'invalid' }] }, { entries: [row(), row()] }, { entries: [], version: 90 }]) {
+    assert.throws(() => D.parse(value, true));
+  }
+  assert.equal(D.parse([row(), { at: 'invalid' }]).invalid, 1);
+});
+test('invalid intensity and preference fields are rejected', () => {
+  assert.equal(D.valid({ at, auraIntensity: 'Extreme' }), false);
+  assert.throws(() => D.parse({ entries: [], customTriggers: ['valid', null] }));
+  assert.throws(() => D.parse({ entries: [], preferences: { theme: 'unknown' } }));
+});
+test('import of an older edited snapshot retains the local entry without duplicating it', () => {
+  const current = state([row({ notes: 'New', updatedAt: '2026-09-11T12:00:00Z' })]);
+  const incoming = D.parse([row({ updatedAt: '2026-09-10T12:00:00Z' })]);
+  const merged = D.merge(current, incoming);
+  assert.equal(merged.state.entries.length, 1); assert.equal(merged.state.entries[0].notes, 'New');
+  assert.equal(merged.result.conflicts, 1);
+});
+test('a newer version of the same ID updates once, and repeat import is idempotent', () => {
+  const current = state([row({ updatedAt: '2026-09-10T12:00:00Z' })]);
+  const incoming = D.parse([row({ notes: 'New', updatedAt: '2026-09-11T12:00:00Z' })]);
+  const merged = D.merge(current, incoming);
+  assert.equal(merged.result.updated, 1); assert.equal(merged.state.entries.length, 1);
+  assert.equal(D.merge(merged.state, incoming).result.duplicates, 1);
+});
+test('legacy conflicts keep local values, while exact content with another ID is skipped', () => {
+  const current = state([row()]);
+  const incoming = D.parse([row({ notes: 'Different' }), row({ id: 'other' })]);
+  const merged = D.merge(current, incoming);
+  assert.equal(merged.result.conflicts, 1); assert.equal(merged.result.duplicates, 1);
+  assert.equal(merged.state.entries.length, 1);
+});
+test('deleted IDs prevent old backups resurrecting deleted entries', () => {
+  const current = { ...state(), deletedIds: ['attack-1'] };
+  const merged = D.merge(current, D.parse([row()]));
+  assert.equal(merged.result.deleted, 1); assert.equal(merged.state.entries.length, 0);
+});
+test('legacy imports retain theme; complete backups restore preferences and merge triggers', () => {
+  const current = { ...state(), preferences: { theme: 'dark' }, customTriggers: ['Travel'] };
+  assert.equal(D.merge(current, D.parse([])).state.preferences.theme, 'dark');
+  const merged = D.merge(current, D.parse({ entries: [], customTriggers: ['Travel', 'Heat'], preferences: { theme: 'light' } }));
+  assert.deepEqual(merged.state.customTriggers, ['Travel', 'Heat']);
+  assert.equal(merged.state.preferences.theme, 'light');
+});
+test('content identity is not confused by delimiters in custom trigger labels', () => {
+  assert.notEqual(D.contentKey(row({ triggers: ['a,b'] })), D.contentKey(row({ triggers: ['a', 'b'] })));
+});
+test('date validation rejects impossible and incomplete local dates', () => {
+  assert.equal(D.fromInput('2026-02-30T10:00'), null);
+  assert.equal(D.fromInput('2026-09-10T10:00junk'), null);
+  assert.equal(D.toInput(D.fromInput('2026-09-10T10:00')), '2026-09-10T10:00');
+});
+test('print period includes month boundaries and excludes future entries', () => {
+  const local = value => new Date(value).toISOString();
+  const entries = ['2026-08-31T23:59', '2026-09-01T00:00', '2026-09-12T12:00', '2026-09-13T12:00'].map((date, i) => row({ id: String(i), at: local(date) }));
+  const result = D.reportEntries(entries, 'month', '2026-09', new Date('2026-09-12T18:00'));
+  assert.deepEqual(result.map(e => e.id), ['1', '2']);
+  assert.equal(D.reportEntries(entries, 'month', ''), null);
+});
+
+// Exercise the actual app storage and draft functions in a small host, keeping
+// browser rendering for the separate visual/manual checks.
+function host(initial = {}, failWrites = false) {
+  const storage = new Map(Object.entries(initial));
+  const elements = new Map();
+  const get = id => {
+    if (!elements.has(id)) elements.set(id, { textContent: '', hidden: true, value: '', addEventListener() {} });
+    return elements.get(id);
+  };
+  const context = vm.createContext({ LogData: D, console: { error() {}, warn() {} }, Date, Map, Set,
+    document: { getElementById: get }, window: { addEventListener() {} },
+    matchMedia: () => ({ matches: false, addEventListener() {} }),
+    localStorage: { get length() { return storage.size; }, key: i => [...storage.keys()][i],
+      getItem: key => storage.get(key) ?? null,
+      setItem: (key, value) => { if (failWrites) throw Error('quota'); storage.set(key, value); },
+      removeItem: key => storage.delete(key) },
+  });
+  const source = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8').split('/* ---- Boot')[0];
+  vm.runInContext(source, context);
+  return { storage, elements, run: source => vm.runInContext(source, context) };
+}
+test('malformed stored JSON locks writes and preserves the exact original bytes', () => {
+  const original = '{broken: medical data';
+  const h = host({ 'migraine-log-v2': original });
+  assert.equal(h.run('storageBlocked'), true);
+  assert.equal(h.run('persistEntries([])'), false);
+  assert.equal(h.storage.get('migraine-log-v2'), original);
+});
+test('invalid legacy rows and unreadable drafts also lock writes', () => {
+  for (const initial of [{ 'migraine-log-v1': '[{"at":"invalid"}]' }, { 'migraine-log-draft-v1:x': '{bad' }]) {
+    const h = host(initial); assert.equal(h.run('storageBlocked'), true); assert.equal(h.run('persistEntries([])'), false);
+  }
+});
+test('legacy migration is atomic and retains the original storage key', () => {
+  const raw = JSON.stringify([row()]);
+  const h = host({ 'migraine-log-v1': raw, 'migraine-log-triggers-v1': '["Travel"]' });
+  assert.equal(h.run('persistEntries(entries)'), true);
+  assert.equal(h.storage.get('migraine-log-v1'), raw);
+  assert.deepEqual(JSON.parse(h.storage.get('migraine-log-v2')).customTriggers, ['Travel']);
+});
+test('a failed write keeps the previous in-memory and stored entries', () => {
+  const raw = JSON.stringify(state([row()])); const h = host({ 'migraine-log-v2': raw }, true);
+  assert.equal(h.run('persistEntries([])'), false); assert.equal(h.run('entries.length'), 1);
+  assert.equal(h.storage.get('migraine-log-v2'), raw);
+});
+test('stale tabs cannot overwrite a newer saved log', () => {
+  const h = host({ 'migraine-log-v2': JSON.stringify(state([row()])) });
+  const newer = JSON.stringify(state([row({ notes: 'Another tab' })])); h.storage.set('migraine-log-v2', newer);
+  assert.equal(h.run('persistEntries([])'), false); assert.equal(h.storage.get('migraine-log-v2'), newer);
+});
+test('valid drafts reload independently of committed log contents', () => {
+  const draft = { base: D.contentKey(row()), values: { at: '2026-09-10T12:00', notes: 'Unfinished', triggers: [], auraIntensity: 'Mild' } };
+  const h = host({ 'migraine-log-v2': JSON.stringify(state([row()])), 'migraine-log-draft-v1:attack-1': JSON.stringify(draft) });
+  assert.equal(h.run("drafts.get('attack-1').values.notes"), 'Unfinished');
+  assert.equal(h.run('entries[0].notes'), 'Original');
+});
+test('drafts from the retired detail fields remain saveable after migration', () => {
+  const oldBase = JSON.stringify([at, null, 'None', null, [], 'Original', 'Old medicine']);
+  const draft = { base: oldBase, values: { at: '2026-09-10T12:00', endedAt: '', medication: '',
+    notes: 'Unfinished', triggers: [], auraIntensity: 'None' } };
+  const h = host({ 'migraine-log-v2': JSON.stringify(state([row()])),
+    'migraine-log-draft-v1:attack-1': JSON.stringify(draft) });
+  assert.equal(h.run("drafts.get('attack-1').base"), D.contentKey(row()));
+  assert.equal(h.run("drafts.get('attack-1').values.auraIntensity"), null);
+  assert.equal(h.run("'endedAt' in drafts.get('attack-1').values"), false);
+});
+test('typing keeps drafts even when a draft storage write fails, without changing the log', () => {
+  const h = host({ 'migraine-log-v2': JSON.stringify(state([row()])) }, true);
+  h.run(`
+    const controls = new Map();
+    const values = { at: '2026-09-10T12:00', notes: 'Keep this unfinished note' };
+    const card = { dataset: { id: 'attack-1' }, querySelector(selector) {
+      const field = selector.match(/data-field="([^"]+)"/);
+      if (field) return { value: values[field[1]] };
+      if (selector.includes('data-chips')) return { querySelectorAll() { return []; } };
+      if (!controls.has(selector)) controls.set(selector, { textContent: '', hidden: true });
+      return controls.get(selector);
+    } };
+    rememberDraft(card);
+  `);
+  assert.equal(h.run("drafts.get('attack-1').values.notes"), 'Keep this unfinished note');
+  assert.equal(h.run("drafts.get('attack-1').stored"), false);
+  assert.equal(h.run('entries[0].notes'), 'Original');
+  assert.equal(h.run("controls.get('.entry-error').hidden"), false);
+});
+test('malformed draft fields lock writes instead of being silently replaced', () => {
+  const draft = { base: 'original', values: { at: '', notes: '', triggers: [42] } };
+  const h = host({ 'migraine-log-draft-v1:x': JSON.stringify(draft) });
+  assert.equal(h.run('storageBlocked'), true);
+  assert.equal(h.run('persistEntries([])'), false);
+});
+test('a damaged backup reminder cannot crash or lock the diary', () => {
+  const h = host({ 'migraine-log-meta-v1': '{"lastExportAt":"bad date","pending":-10}' });
+  assert.equal(h.run('meta.lastExportAt'), null);
+  assert.equal(h.run('meta.pending'), 0);
+  assert.equal(h.run('storageBlocked'), false);
+});

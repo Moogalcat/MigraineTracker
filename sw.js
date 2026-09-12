@@ -1,12 +1,13 @@
 /* Service worker: makes the app load and work with no network at all.
    Bump CACHE when you change any of the files below. */
-const CACHE = 'migraine-log-v28';
+const CACHE = 'migraine-log-v32';
 
 const SHELL = [
   '.',
   'index.html',
   'styles.css',
   'app.js',
+  'data.js',
   'manifest.webmanifest',
   'icons/icon-192.png',
   'icons/icon-512.png',
@@ -29,7 +30,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(
-        keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))
+        keys.filter((k) => k.startsWith('migraine-log-') && k !== CACHE).map((k) => caches.delete(k))
       ))
       .then(() => self.clients.claim())
   );
@@ -54,6 +55,7 @@ self.addEventListener('fetch', (event) => {
             const cache = await caches.open(CACHE);
             await cache.put('index.html', res.clone());
           }
+          if (!res || !res.ok) return (await caches.match('index.html')) || res;
           return res;
         } catch {
           return (await caches.match('index.html')) || Response.error();
@@ -63,18 +65,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Everything else: cache-first, refreshing the copy in the background.
-  event.respondWith(
-    caches.match(req).then((hit) => {
-      const fresh = fetch(req)
-        .then((res) => {
-          if (res && res.ok) {
-            caches.open(CACHE).then((cache) => cache.put(req, res.clone()));
-          }
-          return res;
-        })
-        .catch(() => hit);
-      return hit || fresh;
-    })
-  );
+  // Keep the refresh alive even when a cached response is returned immediately.
+  const fresh = fetch(new Request(req, { cache: 'reload' })).then(async res => {
+    if (res && res.ok) await (await caches.open(CACHE)).put(req, res.clone());
+    return res;
+  });
+  event.waitUntil(fresh.catch(() => {}));
+  event.respondWith(caches.match(req).then(hit => hit || fresh.catch(() => Response.error())));
 });

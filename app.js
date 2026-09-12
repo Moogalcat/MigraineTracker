@@ -1,7 +1,9 @@
 /* Migraine Log — all data stays in this browser's localStorage. */
 'use strict';
 
-const KEY = 'migraine-log-v1';
+const LEGACY_KEY = 'migraine-log-v1';
+const KEY = 'migraine-log-v2';
+const DRAFT_PREFIX = 'migraine-log-draft-v1:';
 const META_KEY = 'migraine-log-meta-v1';
 const CUSTOM_KEY = 'migraine-log-triggers-v1';
 
@@ -13,7 +15,7 @@ const BUILT_IN_TRIGGERS = [
   'Strong smell', 'Weather', 'Screen time', 'Neck tension',
 ];
 
-const INTENSITIES = ['Mild', 'Moderate', 'Severe'];
+const INTENSITIES = LogData.ratings;
 
 // "A few" slots of your own, on top of the built-in list.
 const MAX_CUSTOM_TRIGGERS = 6;
@@ -22,8 +24,15 @@ const $ = (id) => document.getElementById(id);
 const list = $('list');
 const tpl = $('entryTpl');
 
-let entries = load();
+let storageBlocked = false;
+let lastRaw = null;
+let state = loadState();
+let entries = state.entries;
 let meta = loadMeta();
+let visibleCount = 20;
+let firstRender = true;
+const drafts = new Map();
+loadDrafts();
 
 // Entry id to open on the next render - a freshly logged entry shows its whole
 // editor rather than making you tap to open it.
@@ -31,7 +40,7 @@ let openOnRender = null;
 // Entries logged in this session remain cancellable until their first save.
 // They are still written immediately, so an app close cannot lose the timestamp.
 const freshEntryIds = new Set();
-let customTriggers = loadCustomTriggers();
+let customTriggers = state.customTriggers;
 
 /* ---- Storage ----------------------------------------------------------- */
 
@@ -55,58 +64,100 @@ function writeJSON(key, value) {
   }
 }
 
-function load() {
-  const parsed = readJSON(KEY, []);
-  if (!Array.isArray(parsed)) return [];
-  return parsed.filter(valid).map(normalise);
+function loadState() {
+  try {
+    lastRaw = localStorage.getItem(KEY);
+    let loaded;
+    if (lastRaw !== null) loaded = LogData.parse(JSON.parse(lastRaw), true);
+    else {
+      const legacy = localStorage.getItem(LEGACY_KEY);
+      const triggers = localStorage.getItem(CUSTOM_KEY);
+      loaded = LogData.parse({ entries: legacy === null ? [] : JSON.parse(legacy),
+        customTriggers: triggers === null ? [] : JSON.parse(triggers) }, true);
+    }
+    storageBlocked = false;
+    loaded.entries.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+    return { version: 2, entries: loaded.entries, customTriggers: loaded.customTriggers, preferences: loaded.preferences, deletedIds: loaded.deletedIds };
+  } catch (err) {
+    console.error('Saved data left untouched', err);
+    storageBlocked = true;
+    return LogData.empty();
+  }
 }
 
-// Older entries used one ambiguous `intensity` field. Preserve it as headache
-// intensity, which is the least surprising interpretation of the old label.
-function normalise(e) {
-  const triggers = Array.isArray(e.triggers)
-    ? e.triggers.filter((t) => typeof t === 'string' && t.trim()).map((t) => t.trim())
-    : [];
-  const legacyIntensity = INTENSITIES.includes(e.intensity) ? e.intensity : null;
-  return {
-    id: String(e.id || uid()),
-    at: e.at,
-    notes: typeof e.notes === 'string' ? e.notes : '',
-    triggers: [...new Set(triggers)].slice(0, 24),
-    auraIntensity: INTENSITIES.includes(e.auraIntensity) ? e.auraIntensity : null,
-    headacheIntensity: INTENSITIES.includes(e.headacheIntensity)
-      ? e.headacheIntensity
-      : legacyIntensity,
-  };
-}
-
-function loadCustomTriggers() {
-  const parsed = readJSON(CUSTOM_KEY, []);
-  if (!Array.isArray(parsed)) return [];
-  const clean = parsed
-    .filter((t) => typeof t === 'string' && t.trim())
-    .map((t) => t.trim());
-  return [...new Set(clean)].slice(0, MAX_CUSTOM_TRIGGERS);
+const normalise = LogData.normalise;
+function loadDrafts() {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key.startsWith(DRAFT_PREFIX)) continue;
+      const draft = JSON.parse(localStorage.getItem(key));
+      if (!draft || !draft.values || typeof draft.values.at !== 'string'
+        || typeof draft.base !== 'string' || typeof draft.values.notes !== 'string'
+        || !Array.isArray(draft.values.triggers) || !draft.values.triggers.every(t => typeof t === 'string')
+        || !['auraIntensity', 'headacheIntensity'].every(k => draft.values[k] == null
+          || k in draft.values && ['None', ...INTENSITIES].includes(draft.values[k]))) {
+        throw new Error('Unreadable draft');
+      }
+      draft.values.auraIntensity = INTENSITIES.includes(draft.values.auraIntensity)
+        ? draft.values.auraIntensity : null;
+      draft.values.headacheIntensity = INTENSITIES.includes(draft.values.headacheIntensity)
+        ? draft.values.headacheIntensity : null;
+      try {
+        const base = JSON.parse(draft.base);
+        if (Array.isArray(base) && base.length === 7) {
+          draft.base = JSON.stringify([
+            base[0], base[2] === 'None' ? null : base[2],
+            base[3] === 'None' ? null : base[3], base[4], base[5],
+          ]);
+        }
+      } catch { throw new Error('Unreadable draft base'); }
+      delete draft.values.endedAt;
+      delete draft.values.medication;
+      drafts.set(key.slice(DRAFT_PREFIX.length), draft);
+    }
+  } catch (err) {
+    // Never replace an unreadable draft silently. Recovery download includes it.
+    storageBlocked = true;
+    console.error(err);
+  }
 }
 
 // Remembers when you last exported, and how many edits you've made since.
 function loadMeta() {
   const m = readJSON(META_KEY, {});
   return {
-    lastExportAt: m && typeof m.lastExportAt === 'string' ? m.lastExportAt : null,
-    pending: m && Number.isFinite(m.pending) ? m.pending : 0,
+    lastExportAt: m && typeof m.lastExportAt === 'string' && Number.isFinite(Date.parse(m.lastExportAt)) ? m.lastExportAt : null,
+    pending: m && Number.isFinite(m.pending) ? Math.max(0, m.pending) : 0,
   };
 }
 
-function valid(e) {
-  return e && typeof e === 'object' && typeof e.at === 'string' && !isNaN(Date.parse(e.at));
+const valid = LogData.valid;
+
+function persistState(next, recovering = false) {
+  if (storageBlocked && !recovering) return false;
+  try {
+    if (!recovering && localStorage.getItem(KEY) !== lastRaw) {
+      showError('Your log changed in another tab. Reload this page before saving; your local draft is kept.');
+      return false;
+    }
+    const saved = { version: 2, entries: [...next.entries].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)),
+      customTriggers: next.customTriggers, preferences: next.preferences, deletedIds: next.deletedIds };
+    const raw = JSON.stringify(saved);
+    localStorage.setItem(KEY, raw);
+    lastRaw = raw;
+    state = saved;
+    entries = saved.entries;
+    customTriggers = saved.customTriggers;
+    storageBlocked = false;
+    $('appError').hidden = true;
+    return true;
+  } catch (err) { console.error(err); return false; }
 }
 
-function persistEntries(nextEntries) {
-  const sorted = [...nextEntries].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
-  if (!writeJSON(KEY, sorted)) return false;
-  entries = sorted;
-  return true;
+function persistEntries(nextEntries, deletedId) {
+  return persistState({ ...state, entries: nextEntries,
+    deletedIds: deletedId ? [...new Set([...state.deletedIds, deletedId])] : state.deletedIds });
 }
 
 // Call after any edit, so the backup status can flag a stale export file.
@@ -124,21 +175,8 @@ function finishChange(message, count = 1) {
   toast(reminderSaved ? message : `${message}, but the backup reminder could not be saved`);
 }
 
-function uid() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-}
-
-// Identifies an entry by content, to skip duplicates on import. Two entries
-// that differ only in their triggers or either intensity are genuinely different.
-function contentKey(e) {
-  return [
-    e.at,
-    e.auraIntensity || '',
-    e.headacheIntensity || '',
-    [...e.triggers].sort().join(','),
-    e.notes,
-  ].join('|');
-}
+const uid = LogData.uid;
+const contentKey = LogData.contentKey;
 
 /* ---- Date helpers ------------------------------------------------------ */
 
@@ -156,12 +194,7 @@ function capAtNow(input) {
 }
 
 // Read back as local time, then stored as an ISO (UTC) string.
-function fromInput(str) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(str || '');
-  if (!m) return null;
-  const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
-  return isNaN(d.getTime()) ? null : d;
-}
+const fromInput = LogData.fromInput;
 
 const timeFmt = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
 const dateFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
@@ -192,67 +225,91 @@ function describe(date) {
 
 /* ---- Rendering --------------------------------------------------------- */
 
+function draftValues(li) {
+  const value = field => li.querySelector(`[data-field="${field}"]`).value;
+  return { at: value('at'), notes: value('notes'),
+    triggers: readChips(li, 'triggers'), auraIntensity: readChips(li, 'auraIntensity')[0] || null,
+    headacheIntensity: readChips(li, 'headacheIntensity')[0] || null };
+}
+
+function rememberDraft(li) {
+  if (!li) return;
+  const entry = entries.find(e => e.id === li.dataset.id);
+  if (!entry) return;
+  const previous = drafts.get(entry.id);
+  const draft = { base: previous?.base || contentKey(entry), values: draftValues(li) };
+  drafts.set(entry.id, draft);
+  const kept = !storageBlocked && writeJSON(DRAFT_PREFIX + entry.id, draft);
+  draft.stored = kept;
+  if (!kept) showError('Could not keep this draft. Leave this page open and copy your details before closing it.', li);
+}
+
+function clearDraft(id) {
+  drafts.delete(id);
+  try { localStorage.removeItem(DRAFT_PREFIX + id); }
+  catch { showError('Saved data is safe, but an old draft could not be cleared from device storage.'); }
+}
+
+function fillEditor(li, entry) {
+  const draft = drafts.get(entry.id);
+  const values = draft?.values || { ...entry, at: toInput(new Date(entry.at)) };
+  for (const field of ['at', 'notes']) li.querySelector(`[data-field="${field}"]`).value = values[field] || '';
+  capAtNow(li.querySelector('[data-field="at"]'));
+  fillChips(li, values);
+}
+
 function render() {
-  // Preserve which cards the user had expanded.
-  const openIds = new Set(
-    [...list.querySelectorAll('.entry.open')].map((li) => li.dataset.id)
-  );
-  if (openOnRender) {
-    openIds.add(openOnRender);
-    openOnRender = null;
-  }
-
+  const openIds = new Set([...list.querySelectorAll('.entry.open')].map(li => li.dataset.id));
+  const errors = new Map([...list.querySelectorAll('.entry')].map(li => [li.dataset.id, li.querySelector('.entry-error').textContent]));
+  if (openOnRender) { openIds.add(openOnRender); openOnRender = null; }
   list.textContent = '';
-  for (const [index, entry] of entries.entries()) {
-    const li = tpl.content.firstElementChild.cloneNode(true);
+  let lastMonth = '';
+  for (const [index, entry] of entries.slice(0, visibleCount).entries()) {
     const date = new Date(entry.at);
-    const head = li.querySelector('.entry-head');
-    const body = li.querySelector('.entry-body');
-    const atInput = li.querySelector('[data-field="at"]');
-    const notesInput = li.querySelector('[data-field="notes"]');
-    const bodyId = `entry-body-${index}`;
-    const atId = `entry-at-${index}`;
-    const notesId = `entry-notes-${index}`;
-
+    const month = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(date);
+    if (month !== lastMonth) {
+      const row = document.createElement('li'); row.className = 'month-heading';
+      const heading = document.createElement('h2'); heading.textContent = month; row.appendChild(heading); list.appendChild(row); lastMonth = month;
+    }
+    const li = tpl.content.firstElementChild.cloneNode(true);
+    const head = li.querySelector('.entry-head'), body = li.querySelector('.entry-body');
     li.dataset.id = entry.id;
-    const overallIntensity = strongestIntensity(entry);
-    if (overallIntensity) li.classList.add(`severity-${overallIntensity.toLowerCase()}`);
-    head.setAttribute('aria-expanded', 'false');
+    const overall = strongestIntensity(entry);
+    if (overall) li.classList.add(`severity-${overall.toLowerCase()}`);
+    const bodyId = `entry-body-${index}`; body.id = bodyId;
     head.setAttribute('aria-controls', bodyId);
-    body.id = bodyId;
-    atInput.id = atId;
-    notesInput.id = notesId;
-    li.querySelector('.entry-at-label').htmlFor = atId;
-    li.querySelector('.entry-notes-label').htmlFor = notesId;
+    for (const field of ['at', 'notes']) {
+      const input = li.querySelector(`[data-field="${field}"]`);
+      input.id = `entry-${field}-${index}`;
+      li.querySelector(`.entry-${field}-label`).htmlFor = input.id;
+    }
     li.querySelector('.entry-when').textContent = describe(date);
     li.querySelector('.entry-notes').textContent = entry.notes.trim();
-    atInput.value = toInput(date);
-    capAtNow(atInput);
-    notesInput.value = entry.notes;
     renderEntryMeta(li.querySelector('.entry-meta'), entry);
-    fillChips(li, entry);
-
+    fillEditor(li, entry);
     if (freshEntryIds.has(entry.id)) {
       const cancel = li.querySelector('[data-act="cancel"]');
-      cancel.textContent = 'Discard';
-      cancel.classList.remove('btn-ghost');
-      cancel.classList.add('btn-danger');
+      cancel.textContent = 'Discard'; cancel.classList.replace('btn-ghost', 'btn-danger');
       li.querySelector('[data-act="delete"]').hidden = true;
     }
-
-    if (openIds.has(entry.id)) {
-      li.classList.add('open');
-      head.setAttribute('aria-expanded', 'true');
-      body.hidden = false;
-    }
+    const open = openIds.has(entry.id) || (firstRender && drafts.has(entry.id));
+    li.classList.toggle('open', open); head.setAttribute('aria-expanded', String(open)); body.hidden = !open;
+    if (errors.get(entry.id)) showError(errors.get(entry.id), li);
     list.appendChild(li);
   }
-
-  $('empty').hidden = entries.length > 0;
-  renderTally();
-  renderStats();
-  renderBackupStatus();
+  firstRender = false;
+  $('empty').hidden = entries.length > 0 || storageBlocked;
+  $('recovery').hidden = !storageBlocked;
+  $('logNow').disabled = storageBlocked;
+  $('exportBtn').disabled = storageBlocked;
+  $('theme').disabled = storageBlocked;
+  $('showOlder').hidden = entries.length <= visibleCount;
+  $('showOlder').textContent = `Show older (${Math.max(0, entries.length - visibleCount)} remaining)`;
+  renderTally(); renderStats(); renderBackupStatus();
 }
+
+list.addEventListener('input', ev => rememberDraft(ev.target.closest('.entry')));
+$('showOlder').addEventListener('click', () => { visibleCount += 20; render(); });
 
 // The badge and trigger list shown on the collapsed card.
 function renderEntryMeta(el, entry) {
@@ -400,7 +457,9 @@ function monthlyCounts(list, months = 6) {
       const x = new Date(e.at);
       return x.getFullYear() === d.getFullYear() && x.getMonth() === d.getMonth();
     }).length;
-    out.push({ label: monthFmt.format(d), count });
+    const first = list.length ? new Date(Math.min(...list.map(e => Date.parse(e.at)))) : now;
+    const before = d < new Date(first.getFullYear(), first.getMonth(), 1);
+    out.push({ label: monthFmt.format(d) + (i === 0 ? ' (so far)' : ''), count, before });
   }
   return out;
 }
@@ -460,7 +519,7 @@ function renderStats() {
   ];
   if (list.length >= 2) {
     const gap = (last - first) / (list.length - 1) / 86400000;
-    facts.push(['Typical gap', gap < 1
+    facts.push(['Average gap', gap < 1
       ? 'under a day'
       : `about ${Math.round(gap) === 1 ? 'a day' : `${Math.round(gap)} days`}`]);
   }
@@ -475,8 +534,13 @@ function renderStats() {
   const monthPeak = Math.max(...months.map((m) => m.count), 1);
   const byMonth = statBlock('Last six months');
   for (const m of months) {
-    byMonth.appendChild(statRow(m.label, String(m.count), m.count / monthPeak));
+    const row = statRow(m.label, m.before ? '—' : String(m.count), m.before ? 0 : m.count / monthPeak);
+    if (m.before) { row.classList.add('before-records'); row.setAttribute('aria-label', `${m.label}: before first record`); }
+    byMonth.appendChild(row);
   }
+  const explanation = document.createElement('p'); explanation.className = 'note';
+  explanation.textContent = '— means before your first record. Counts describe logged entries; an empty month does not establish that no attacks occurred.';
+  byMonth.appendChild(explanation);
   box.appendChild(byMonth);
 
   // Avoid a redundant one-row chart until the log spans two calendar years.
@@ -492,7 +556,7 @@ function renderStats() {
 
   // --- Triggers ---------------------------------------------------------
   const triggers = triggerCounts(list);
-  const byTrigger = statBlock('Most common triggers');
+  const byTrigger = statBlock('Most recorded possible triggers');
   if (triggers.length) {
     const peak = triggers[0][1];
     for (const [label, count] of triggers.slice(0, 8)) {
@@ -522,7 +586,7 @@ function appendIntensityStats(box, list, title, field) {
     );
   }
   if (unrated) {
-    byIntensity.appendChild(statRow('Not rated', String(unrated), unrated / intensityPeak, '--line-strong'));
+    byIntensity.appendChild(statRow('Not recorded', String(unrated), unrated / intensityPeak, '--line-strong'));
   }
   box.appendChild(byIntensity);
 }
@@ -619,11 +683,12 @@ function addCustomTrigger(row) {
   }
 
   const nextTriggers = [...customTriggers, label];
-  if (!writeJSON(CUSTOM_KEY, nextTriggers)) {
+  if (!persistState({ ...state, customTriggers: nextTriggers })) {
     toast('Could not save the trigger — device storage is full or blocked');
     return;
   }
   customTriggers = nextTriggers;
+  markChanged();
   refreshAllTriggerRows();
 
   // Select it straight away in the row it was added from.
@@ -633,11 +698,12 @@ function addCustomTrigger(row) {
 
 function removeCustomTrigger(label) {
   const nextTriggers = customTriggers.filter((t) => t !== label);
-  if (!writeJSON(CUSTOM_KEY, nextTriggers)) {
+  if (!persistState({ ...state, customTriggers: nextTriggers })) {
     toast('Could not remove the trigger — device storage is full or blocked');
     return;
   }
   customTriggers = nextTriggers;
+  markChanged();
   refreshAllTriggerRows();
   toast(`"${label}" removed from your list`);
 }
@@ -671,7 +737,8 @@ function handleChipClick(ev) {
 /* ---- Editing and deleting ---------------------------------------------- */
 
 list.addEventListener('click', (ev) => {
-  if (handleChipClick(ev)) return;
+  const editedCard = ev.target.closest('.entry');
+  if (handleChipClick(ev)) { rememberDraft(editedCard); return; }
 
   const btn = ev.target.closest('[data-act]');
   if (!btn) return;
@@ -690,30 +757,29 @@ list.addEventListener('click', (ev) => {
       const open = li.classList.toggle('open');
       btn.setAttribute('aria-expanded', String(open));
       body.hidden = !open;
-      if (open) {
-        // Start from the stored values every time it opens.
-        atInput.value = toInput(new Date(entry.at));
-        capAtNow(atInput);
-        notesInput.value = entry.notes;
-        fillChips(li, entry);
-      }
+      if (open) capAtNow(atInput);
       break;
     }
 
     case 'save': {
       const date = fromInput(atInput.value);
       if (!date) {
-        toast('Please pick a valid date and time');
+        showError('Please pick a valid date and time.', li);
         atInput.focus();
         return;
       }
       if (date.getTime() > Date.now()) {
-        toast('That is in the future — pick a time up to now');
+        showError('That is in the future — pick a time up to now.', li);
         atInput.focus();
         return;
       }
+      const draft = drafts.get(id);
+      if (draft && draft.base !== contentKey(entry)) {
+        showError('The saved entry changed since this draft began. Copy any details you need, then Cancel to view the saved version before editing again.', li); return;
+      }
       const updated = {
         ...entry,
+        updatedAt: new Date().toISOString(),
         at: date.toISOString(),
         notes: notesInput.value,
         triggers: readChips(li, 'triggers'),
@@ -722,40 +788,53 @@ list.addEventListener('click', (ev) => {
       };
       const nextEntries = entries.map((e) => e.id === id ? updated : e);
       if (!persistEntries(nextEntries)) {
-        toast('Could not save — device storage is full or blocked');
+        showError('Could not save — device storage is full, blocked, or changed in another tab. Your draft remains open.', li);
         return;
       }
       freshEntryIds.delete(id);
+      clearDraft(id);
+      li.querySelector('.entry-error').textContent = '';
       li.classList.remove('open');
+      visibleCount = Math.max(visibleCount, entries.findIndex(e => e.id === id) + 1);
       finishChange('Saved');
+      list.querySelector(`.entry[data-id="${CSS.escape(id)}"] .entry-head`)?.focus({ preventScroll: true });
       break;
     }
 
     case 'cancel': {
       if (freshEntryIds.has(id)) {
-        if (!persistEntries(entries.filter((e) => e.id !== id))) {
+        if (!persistEntries(entries.filter((e) => e.id !== id), id)) {
           toast('Could not discard — device storage is full or blocked');
           return;
         }
         freshEntryIds.delete(id);
+        clearDraft(id);
         finishChange('Entry discarded', -1);
+        $('logNow').focus({ preventScroll: true });
         return;
       }
+      clearDraft(id);
+      fillEditor(li, entry);
+      li.querySelector('.entry-error').textContent = '';
+      li.querySelector('.entry-error').hidden = true;
       li.classList.remove('open');
       li.querySelector('.entry-head').setAttribute('aria-expanded', 'false');
       body.hidden = true;
+      li.querySelector('.entry-head').focus({ preventScroll: true });
       break;
     }
 
     case 'delete': {
       if (!confirm(`Delete the entry from ${describe(new Date(entry.at))}?`)) return;
       const wasFresh = freshEntryIds.has(id);
-      if (!persistEntries(entries.filter((e) => e.id !== id))) {
+      if (!persistEntries(entries.filter((e) => e.id !== id), id)) {
         toast('Could not delete — device storage is full or blocked');
         return;
       }
       freshEntryIds.delete(id);
+      clearDraft(id);
       finishChange('Entry deleted', wasFresh ? -1 : 1);
+      $('logNow').focus({ preventScroll: true });
       break;
     }
   }
@@ -765,7 +844,7 @@ list.addEventListener('click', (ev) => {
 
 $('logNow').addEventListener('click', () => {
   const entry = {
-    id: uid(), at: new Date().toISOString(), notes: '', triggers: [],
+    id: uid(), at: new Date().toISOString(), updatedAt: new Date().toISOString(), notes: '', triggers: [],
     auraIntensity: null, headacheIntensity: null,
   };
   if (!persistEntries([...entries, entry])) {
@@ -774,95 +853,138 @@ $('logNow').addEventListener('click', () => {
   }
   freshEntryIds.add(entry.id);
   openOnRender = entry.id;
-  finishChange('Logged — add details or change the date below');
+  visibleCount = Math.max(20, visibleCount, entries.findIndex(e => e.id === entry.id) + 1);
+  finishChange('Logged');
 
   const card = list.querySelector(`.entry[data-id="${CSS.escape(entry.id)}"]`);
-  if (card) card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  if (card) card.querySelector('.entry-head').focus({ preventScroll: true });
 });
 
 /* ---- Backup ------------------------------------------------------------ */
 
-$('exportBtn').addEventListener('click', () => {
-  const stamp = toInput(new Date()).replace(/[:T]/g, '-');
-  const blob = new Blob([JSON.stringify(entries, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `migraine-log-${stamp}.json`;
-  a.click();
+function downloadJSON(value, filename) {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
 
-  // Browsers do not report whether the user ultimately keeps the download, so
-  // record this as an export attempt rather than claiming the file was saved.
+$('exportBtn').addEventListener('click', () => {
+  if (storageBlocked) return;
+  const stamp = toInput(new Date()).replace(/[:T]/g, '-');
+  downloadJSON({ ...state, exportedAt: new Date().toISOString() }, `migraine-log-${stamp}.json`);
   const nextMeta = { lastExportAt: new Date().toISOString(), pending: 0 };
-  if (!writeJSON(META_KEY, nextMeta)) {
-    toast('Export started, but the backup reminder could not be saved');
-    return;
-  }
-  meta = nextMeta;
-  renderBackupStatus();
-  toast('Export started — check your downloads');
+  if (!writeJSON(META_KEY, nextMeta)) { showError('Export started, but the backup reminder could not be saved.'); return; }
+  meta = nextMeta; renderBackupStatus(); toast('Export started — check your downloads. Drafts are not included.');
 });
 
+function recoveryCopy() {
+  const raw = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key.startsWith('migraine-log') && !key.startsWith('migraine-log-recovery-')) raw[key] = localStorage.getItem(key);
+  }
+  return { recoveredAt: new Date().toISOString(), raw };
+}
+$('recoveryExport').addEventListener('click', () => {
+  try { downloadJSON(recoveryCopy(), `migraine-log-recovery-${Date.now()}.json`); toast('Recovery download started — check your downloads.'); }
+  catch { showError('Browser storage cannot be read. Keep this page open and try allowing site storage before retrying.'); }
+});
+$('recoveryRetry').addEventListener('click', () => location.reload());
 $('importBtn').addEventListener('click', () => $('importFile').click());
-
-$('importFile').addEventListener('change', async (ev) => {
-  const file = ev.target.files && ev.target.files[0];
-  ev.target.value = '';
+$('importFile').addEventListener('change', async ev => {
+  const file = ev.target.files?.[0]; ev.target.value = '';
   if (!file) return;
-
+  const resultBox = $('importResult');
+  let changed = false;
   try {
-    const parsed = JSON.parse(await file.text());
-    // A backup is a plain array of entries; also accept a wrapping object.
-    const incoming = Array.isArray(parsed) ? parsed : parsed && parsed.entries;
-    if (!Array.isArray(incoming)) throw new Error('no entries in file');
-
-    const validRows = incoming.filter(valid);
-    const invalid = incoming.length - validRows.length;
-    const seen = new Set(entries.map(contentKey));
-    const nextEntries = [...entries];
-    let added = 0;
-    let duplicates = 0;
-
-    for (const raw of validRows) {
-      const e = normalise({ ...raw, id: uid(), at: new Date(raw.at).toISOString() });
-      const key = contentKey(e);
-      if (seen.has(key)) {
-        duplicates++;
-        continue;
-      }
-      seen.add(key);
-      nextEntries.push(e);
-      added++;
-    }
-
-    if (added && !persistEntries(nextEntries)) {
-      toast('Could not import — device storage is full or blocked');
-      return;
-    }
-
-    const parts = [];
-    if (added) parts.push(`${added} imported`);
-    if (duplicates) parts.push(`${duplicates} duplicate${duplicates === 1 ? '' : 's'} skipped`);
-    if (invalid) parts.push(`${invalid} invalid ${invalid === 1 ? 'record' : 'records'} skipped`);
-    const message = parts.length ? parts.join(' · ') : 'The backup contained no entries';
-
-    if (added) {
-      finishChange(message, added);
+    const incoming = LogData.parse(JSON.parse(await file.text()));
+    if (storageBlocked) {
+      if (incoming.invalid || !incoming.entries.length) throw new Error('Recovery requires a backup with readable entries and no invalid records.');
+      if (!confirm('Restore this backup as your log? The unreadable data and drafts will first be preserved in a separate recovery copy on this device.')) return;
+      const recovery = recoveryCopy();
+      if (!writeJSON(`migraine-log-recovery-${Date.now()}`, recovery)) throw new Error('Could not preserve the original data. Download a recovery copy and free device storage before trying again.');
+      if (!persistState(incoming, true)) throw new Error('Could not restore. The original data is preserved; check device storage.');
+      for (const key of Object.keys(recovery.raw)) if (key.startsWith(DRAFT_PREFIX)) localStorage.removeItem(key);
+      drafts.clear();
+      changed = true;
+      resultBox.textContent = `Restored ${entries.length} entries. The original data is retained in a recovery copy on this device.`;
     } else {
-      render();
-      toast(message);
+      const { state: merged, result } = LogData.merge(state, incoming);
+      merged.entries.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+      changed = JSON.stringify(state) !== JSON.stringify(merged);
+      if (changed && !persistState(merged)) throw new Error('Could not import. Device storage may be full, blocked, or changed in another tab.');
+      const parts = [`${result.added} imported`, `${result.updated} updated`];
+      if (result.duplicates) parts.push(`${result.duplicates} exact duplicates skipped`);
+      if (result.conflicts) parts.push(`${result.conflicts} older or undated conflicts kept as local entries`);
+      if (result.deleted) parts.push(`${result.deleted} previously deleted entries skipped`);
+      if (result.invalid) parts.push(`${result.invalid} invalid records skipped`);
+      resultBox.textContent = parts.join(' · ') + '.';
     }
+    resultBox.classList.remove('error'); resultBox.hidden = false;
+    applyTheme(); if (changed) markChanged(); render();
   } catch (err) {
-    console.error(err);
-    toast('That file does not look like a Migraine Log backup');
+    resultBox.textContent = `Import stopped: ${err.message}`;
+    resultBox.classList.add('error'); resultBox.hidden = false;
   }
 });
+
+/* ---- Appearance and print summary -------------------------------------- */
+function applyTheme() {
+  const theme = state.preferences.theme;
+  document.documentElement.dataset.theme = theme;
+  $('theme').value = theme;
+  const dark = theme === 'dark' || (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+  for (const tag of document.querySelectorAll('meta[name="theme-color"]')) tag.content = dark ? '#1b1e20' : '#eceae5';
+}
+$('theme').addEventListener('change', () => {
+  if (!persistState({ ...state, preferences: { theme: $('theme').value } })) {
+    $('theme').value = state.preferences.theme; showError('Could not save appearance. Check device storage.'); return;
+  }
+  applyTheme(); markChanged();
+});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+
+$('reportMonth').value = toInput(new Date()).slice(0, 7);
+$('reportMonth').max = toInput(new Date()).slice(0, 7);
+$('reportPeriod').addEventListener('change', () => { $('reportMonthRow').hidden = $('reportPeriod').value !== 'month'; });
+function buildPrintSummary() {
+  const period = $('reportPeriod').value, month = $('reportMonth').value;
+  const rows = LogData.reportEntries(entries, period, month);
+  if (!rows || (period === 'month' && month > toInput(new Date()).slice(0, 7))) {
+    $('reportError').textContent = 'Choose a valid month up to this month.'; $('reportError').hidden = false; return false;
+  }
+  $('reportError').hidden = true;
+  const root = $('printSummary'); root.textContent = '';
+  const add = (parent, tag, text, className) => { const el = document.createElement(tag); el.textContent = text; if (className) el.className = className; parent.appendChild(el); return el; };
+  add(root, 'h1', 'Migraine Log');
+  const label = period === 'month' ? new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(new Date(`${month}-01T12:00`)) : 'Last 90 days';
+  add(root, 'p', `${label} · Prepared ${fullFmt.format(new Date())}`);
+  const rated = field => rows.filter(e => e[field] != null).length;
+  add(root, 'p', `${rows.length} logged ${rows.length === 1 ? 'entry' : 'entries'} · Aura recorded: ${rated('auraIntensity')} · Headache recorded: ${rated('headacheIntensity')}`);
+  add(root, 'p', 'Personal record of saved entries. Blank fields mean not recorded; gaps do not establish symptom-free days. Drafts are excluded.');
+  if (!rows.length) add(root, 'p', 'No saved entries in this period.');
+  for (const e of rows) {
+    const article = add(root, 'article', '', 'print-entry');
+    add(article, 'h2', `${fullFmt.format(new Date(e.at))}, ${timeFmt.format(new Date(e.at))}`);
+    add(article, 'p', `Aura: ${e.auraIntensity || 'Not recorded'} · Headache: ${e.headacheIntensity || 'Not recorded'}`);
+    if (e.triggers.length) add(article, 'p', `Possible triggers: ${e.triggers.join(', ')}`);
+    if (e.notes) add(article, 'p', e.notes);
+  }
+  return true;
+}
+$('printReport').addEventListener('click', () => { if (buildPrintSummary()) window.print(); });
+window.addEventListener('beforeprint', buildPrintSummary);
 
 /* ---- Toast ------------------------------------------------------------- */
 
 let toastTimer;
+function showError(message, li) {
+  const el = li ? li.querySelector('.entry-error') : $('appError');
+  el.textContent = message; el.hidden = false;
+}
 function toast(msg) {
+  if (/^(Could not|That file|Please pick|That is in the future)/.test(msg)) { showError(msg); return; }
   const el = $('toast');
   el.textContent = msg;
   el.hidden = false;
@@ -872,11 +994,21 @@ function toast(msg) {
 
 /* ---- Boot -------------------------------------------------------------- */
 
+applyTheme();
+// A restored draft must be reachable even if its entry is older than page one.
+for (const id of drafts.keys()) visibleCount = Math.max(visibleCount, entries.findIndex(e => e.id === id) + 1);
 render();
 
 // Keep the "Today / Yesterday" labels honest if the app sits open past midnight.
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) render();
+  if (!document.hidden) {
+    renderTally(); renderStats(); renderBackupStatus();
+    for (const li of list.querySelectorAll('.entry')) {
+      const e = entries.find(e => e.id === li.dataset.id);
+      if (e) li.querySelector('.entry-when').textContent = describe(new Date(e.at));
+      for (const input of li.querySelectorAll('input[type="datetime-local"]')) capAtNow(input);
+    }
+  }
 });
 
 if ('serviceWorker' in navigator) {
