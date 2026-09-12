@@ -36,8 +36,12 @@
     <h2 class="editor-title">New entry</h2>
     <label for="newAt">Date &amp; time</label>
     <input type="datetime-local" id="newAt" required>
+    <label>Triggers</label>
+    <div class="chips" data-chips="triggers"></div>
+    <label>Intensity <span class="hint">once it has passed</span></label>
+    <div class="chips" data-chips="intensity"></div>
     <label for="newNotes">Notes</label>
-    <textarea id="newNotes" rows="4" placeholder="Symptoms, triggers, medication, how long it lasted&hellip;"></textarea>
+    <textarea id="newNotes" rows="3" placeholder="Anything else worth remembering&hellip;"></textarea>
     <div class="row">
       <button type="submit" class="btn btn-primary btn-sm">Save entry</button>
       <button type="button" class="btn btn-ghost btn-sm" id="newCancel">Cancel</button>
@@ -48,7 +52,8 @@
 
   <p class="empty" id="empty" hidden>
     No entries yet.<br>
-    Tap <strong>Log migraine now</strong> when one starts &mdash; you can edit the time and add notes later.
+    Tap <strong>Log migraine now</strong> when one starts &mdash; you can add triggers,
+    intensity and notes afterwards, once it has passed.
   </p>
 </main>
 
@@ -72,15 +77,22 @@
 <template id="entryTpl">
   <li class="card entry">
     <button type="button" class="entry-head" data-act="toggle">
-      <span class="entry-when"></span>
-      <span class="entry-notes"></span>
+      <span class="entry-head-main">
+        <span class="entry-when"></span>
+        <span class="entry-meta"></span>
+        <span class="entry-notes"></span>
+      </span>
       <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
     </button>
     <div class="entry-body" hidden>
       <label>Date &amp; time</label>
       <input type="datetime-local" data-field="at" required>
+      <label>Triggers</label>
+      <div class="chips" data-chips="triggers"></div>
+      <label>Intensity <span class="hint">once it has passed</span></label>
+      <div class="chips" data-chips="intensity"></div>
       <label>Notes</label>
-      <textarea data-field="notes" rows="4" placeholder="Symptoms, triggers, medication, how long it lasted&hellip;"></textarea>
+      <textarea data-field="notes" rows="3" placeholder="Anything else worth remembering&hellip;"></textarea>
       <div class="row">
         <button type="button" class="btn btn-primary btn-sm" data-act="save">Save</button>
         <button type="button" class="btn btn-ghost btn-sm" data-act="cancel">Cancel</button>

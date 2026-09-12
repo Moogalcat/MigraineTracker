@@ -9,6 +9,9 @@
   --accent: #6d3fd4;
   --accent-text: #ffffff;
   --danger: #b3243c;
+  --mild: #2f7a5a;
+  --moderate: #9a6412;
+  --severe: #b3243c;
   --radius: 14px;
   --pad: 16px;
   --safe-b: env(safe-area-inset-bottom, 0px);
@@ -27,6 +30,9 @@
     --accent: #a98bf5;
     --accent-text: #1a1030;
     --danger: #ff8ba0;
+    --mild: #74d0a6;
+    --moderate: #e8b765;
+    --severe: #ff8ba0;
     color-scheme: dark;
   }
 }
@@ -147,10 +153,9 @@ input:focus-visible, textarea:focus-visible, .btn:focus-visible, .entry-head:foc
 .entry { overflow: hidden; }
 
 .entry-head {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
   align-items: center;
-  gap: 4px 12px;
+  gap: 12px;
   width: 100%;
   padding: 14px var(--pad);
   border: 0;
@@ -161,9 +166,15 @@ input:focus-visible, textarea:focus-visible, .btn:focus-visible, .entry-head:foc
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
+.entry-head-main {
+  flex: 1;
+  min-width: 0;               /* lets the notes line truncate */
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
 .entry-when { font-weight: 600; }
 .entry-notes {
-  grid-column: 1;
   color: var(--text-dim);
   font-size: 0.9rem;
   overflow: hidden;
@@ -172,13 +183,98 @@ input:focus-visible, textarea:focus-visible, .btn:focus-visible, .entry-head:foc
 }
 .entry-notes:empty { display: none; }
 .chev {
-  grid-row: 1 / span 2;
-  grid-column: 2;
+  flex: none;
   width: 20px; height: 20px;
   fill: none; stroke: var(--text-dim); stroke-width: 2;
   stroke-linecap: round; stroke-linejoin: round;
   transition: transform 0.18s ease;
 }
+.entry-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+.entry-meta:empty { display: none; }
+
+.badge {
+  padding: 1px 8px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.badge-mild { color: var(--mild); }
+.badge-moderate { color: var(--moderate); }
+.badge-severe { color: var(--severe); }
+
+/* ---- Chips ------------------------------------------------------------- */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.chip-wrap { display: inline-flex; }
+
+.chip {
+  min-height: 38px;
+  padding: 7px 13px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.chip:active { transform: scale(0.97); }
+.chip.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+.chip-add { border-style: dashed; color: var(--text-dim); }
+
+/* Custom triggers carry a remove button, joined to the chip */
+.chip-wrap.has-x .chip {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: 0;
+  padding-right: 9px;
+}
+.chip-x {
+  min-height: 38px;
+  padding: 7px 10px 7px 6px;
+  border: 1px solid var(--line);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-top-right-radius: 999px;
+  border-bottom-right-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.chip-x:hover { color: var(--danger); }
+
+.hint {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: 0.85;
+}
+
 .entry.open .chev { transform: rotate(180deg); }
 .entry.open .entry-notes { white-space: normal; }
 .entry-body { padding: 0 var(--pad) var(--pad); border-top: 1px solid var(--line); padding-top: var(--pad); }
