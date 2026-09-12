@@ -140,6 +140,12 @@ function toInput(date) {
          `T${p(date.getHours())}:${p(date.getMinutes())}`;
 }
 
+// Caps the date picker at the present moment: a migraine cannot be in the
+// future, and the browser's own picker honours `max`.
+function capAtNow(input) {
+  input.max = toInput(new Date());
+}
+
 // Read back as local time, then stored as an ISO (UTC) string.
 function fromInput(str) {
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(str || '');
@@ -211,6 +217,7 @@ function render() {
     li.querySelector('.entry-when').textContent = describe(date);
     li.querySelector('.entry-notes').textContent = entry.notes.trim();
     atInput.value = toInput(date);
+    capAtNow(atInput);
     notesInput.value = entry.notes;
     renderEntryMeta(li.querySelector('.entry-meta'), entry);
     fillChips(li, entry);
@@ -631,6 +638,7 @@ list.addEventListener('click', (ev) => {
       if (open) {
         // Start from the stored values every time it opens.
         atInput.value = toInput(new Date(entry.at));
+        capAtNow(atInput);
         notesInput.value = entry.notes;
         fillChips(li, entry);
       }
@@ -641,6 +649,11 @@ list.addEventListener('click', (ev) => {
       const date = fromInput(atInput.value);
       if (!date) {
         toast('Please pick a valid date and time');
+        atInput.focus();
+        return;
+      }
+      if (date.getTime() > Date.now()) {
+        toast('That is in the future — pick a time up to now');
         atInput.focus();
         return;
       }

@@ -131,6 +131,21 @@ entries, naive correlation reliably invents patterns that are not there, and a
 health diary that fabricates triggers is worse than one that just shows you
 the data.
 
+## Dates cannot be in the future
+
+A migraine cannot have happened later than now, so each entry's date field
+carries `max="<now>"`, refreshed whenever the entry is rendered or opened.
+Browsers restrict their own native date picker to that range, which is what
+keeps future years out of the picker — the picker is browser UI, so a page
+cannot edit its contents directly, only constrain them.
+
+`max` alone is not enough, because a value can still be typed in, so saving
+also refuses anything later than the present moment. Exactly "now" is allowed.
+
+A backup can still contain a future-dated entry. Those import fine and are
+reported in the header, but the entry must have its date corrected before it
+will save again.
+
 ## What the header counts
 
 Both totals count only entries that have actually happened — anything dated in
