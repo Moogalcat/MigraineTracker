@@ -1,6 +1,6 @@
 /* Service worker: makes the app load and work with no network at all.
    Bump CACHE when you change any of the files below. */
-const CACHE = 'migraine-log-v38';
+const CACHE = 'migraine-log-v39';
 const FIREBASE_VERSION = '12.18.0';
 
 const SHELL = [

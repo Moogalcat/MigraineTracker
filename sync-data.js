@@ -3,6 +3,9 @@
 const MigraineSyncData = (() => {
   const entryTime = (entry) => Date.parse(entry.updatedAt || entry.at) || 0;
   const sameEntry = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const isEntryChange = (record) => record?.kind === 'entry'
+    || (record?.kind == null && typeof record?.id === 'string'
+      && (record.deleted === true || record.entry != null));
 
   function reconcileEntries(current, remoteRecords, tombstones = {}, now = Date.now()) {
     const byId = new Map(current.entries.map(entry => [entry.id, entry]));
@@ -86,6 +89,6 @@ const MigraineSyncData = (() => {
     };
   }
 
-  return { entryTime, reconcileEntries };
+  return { entryTime, isEntryChange, reconcileEntries };
 })();
 if (typeof module !== 'undefined') module.exports = MigraineSyncData;

@@ -11,6 +11,12 @@ const at = '2026-09-10T10:00:00.000Z';
 const row = (overrides = {}) => D.normalise({ id: 'attack-1', at, notes: 'Original', ...overrides });
 const state = (entries = []) => ({ ...D.empty(), entries });
 
+test('sync recognises entry records written before the kind marker fix', () => {
+  assert.equal(S.isEntryChange({ id: 'old', deleted: false, entry: row() }), true);
+  assert.equal(S.isEntryChange({ id: 'old', deleted: true }), true);
+  assert.equal(S.isEntryChange({ kind: 'settings', customTriggers: [] }), false);
+});
+
 test('legacy ratings migrate without inventing an aura rating', () => {
   const e = D.parse([{ at, intensity: 'Severe' }], true).entries[0];
   assert.equal(e.headacheIntensity, 'Severe'); assert.equal(e.auraIntensity, null);

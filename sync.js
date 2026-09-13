@@ -153,7 +153,7 @@ function validCloudSettings(record) {
 async function applySnapshot(snapshot) {
   if (!activeUser) return;
   const records = snapshot.docs.map(item => ({ ...item.data(), cloudId: item.id }));
-  const remoteEntries = newest(records.filter(record => record.kind === 'entry'), record => record.id);
+  const remoteEntries = newest(records.filter(MigraineSyncData.isEntryChange), record => record.id);
   const remoteSettings = newest(records.filter(record => record.kind === 'settings'), () => 'settings')[0];
   const current = syncBridge.getState();
   for (const id of current.deletedIds) {
