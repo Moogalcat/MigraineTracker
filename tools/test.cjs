@@ -27,6 +27,15 @@ test('sync collapses identical entries created independently on two devices', ()
   assert.equal(result.changed, true);
 });
 
+test('sync keeps the most detailed copy when duplicate timestamps have no edit time', () => {
+  const emptyCopy = row({ id: 'empty', updatedAt: null });
+  const detailedCopy = row({ id: 'detailed', updatedAt: null, notes: 'With details' });
+  const result = S.reconcileEntries(state([emptyCopy]), [{ id: detailedCopy.id, deleted: false,
+    modifiedAt: detailedCopy.at, entry: detailedCopy }]);
+  assert.equal(result.state.entries.length, 1);
+  assert.equal(result.state.entries[0].id, 'detailed');
+});
+
 test('legacy ratings migrate without inventing an aura rating', () => {
   const e = D.parse([{ at, intensity: 'Severe' }], true).entries[0];
   assert.equal(e.headacheIntensity, 'Severe'); assert.equal(e.auraIntensity, null);

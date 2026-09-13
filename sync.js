@@ -11,6 +11,7 @@ const syncSignOut = document.getElementById('syncSignOut');
 const syncResult = document.getElementById('syncResult');
 const SYNC_META_KEY = 'migraine-log-sync-v1';
 const FIREBASE_VERSION = '12.18.0';
+const CHANGE_GENERATION = 2;
 const isEntryChange = MigraineSyncData.isEntryChange || ((record) => record?.kind === 'entry'
   || (record?.kind == null && typeof record?.id === 'string'
     && (record.deleted === true || record.entry != null)));
@@ -102,7 +103,8 @@ function appendChanges(records) {
   const changes = firebaseApi.collection(db, 'users', activeUser.uid, 'changes');
   setSyncStatus(navigator.onLine ? 'Syncing' : 'Offline');
   for (const record of records) {
-    firebaseApi.addDoc(changes, { ...record, deviceId: syncMeta.deviceId }).catch((error) => {
+    firebaseApi.addDoc(changes, { ...record, generation: CHANGE_GENERATION,
+      deviceId: syncMeta.deviceId }).catch((error) => {
       console.error('Cloud write failed', error);
       setSyncStatus(navigator.onLine ? 'Error' : 'Offline');
       showSyncResult(friendlyError(error), true);
@@ -215,7 +217,10 @@ function watchUser(user) {
     return;
   }
   setSyncStatus(navigator.onLine ? 'Connecting' : 'Offline');
-  const changes = firebaseApi.collection(db, 'users', user.uid, 'changes');
+  const changes = firebaseApi.query(
+    firebaseApi.collection(db, 'users', user.uid, 'changes'),
+    firebaseApi.where('generation', '==', CHANGE_GENERATION)
+  );
   stopChanges = firebaseApi.onSnapshot(changes, { includeMetadataChanges: true }, (snapshot) => {
     snapshotQueue = snapshotQueue.then(() => applySnapshot(snapshot)).catch((error) => {
       console.error('Cloud merge failed', error);

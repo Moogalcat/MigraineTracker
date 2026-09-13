@@ -10,10 +10,14 @@ const MigraineSyncData = (() => {
   function dedupeEntries(entries) {
     const unique = new Map();
     for (const entry of entries) {
-      const key = LogData.contentKey(entry);
+      const key = entry.at;
       const existing = unique.get(key);
+      const detailScore = value => (value.notes?.length || 0) + (value.triggers?.length || 0)
+        + (value.auraIntensity ? 1 : 0) + (value.headacheIntensity ? 1 : 0);
       if (!existing || entryTime(entry) > entryTime(existing)
-        || (entryTime(entry) === entryTime(existing) && entry.id < existing.id)) unique.set(key, entry);
+        || (entryTime(entry) === entryTime(existing) && detailScore(entry) > detailScore(existing))
+        || (entryTime(entry) === entryTime(existing) && detailScore(entry) === detailScore(existing)
+          && entry.id < existing.id)) unique.set(key, entry);
     }
     return [...unique.values()];
   }
