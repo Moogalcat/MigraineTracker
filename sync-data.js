@@ -30,7 +30,8 @@ const MigraineSyncData = (() => {
 
       if (record.deleted === true) {
         if (local && entryTime(local) > remoteTime) {
-          uploads.push({ id, deleted: false, modifiedAt: local.updatedAt || local.at, entry: local });
+          uploads.push({ kind: 'entry', id, deleted: false,
+            modifiedAt: local.updatedAt || local.at, entry: local });
           continue;
         }
         if (local) { byId.delete(id); changed = true; }
@@ -46,7 +47,8 @@ const MigraineSyncData = (() => {
       const remote = LogData.normalise(record.entry);
       if (deleted.has(id)) {
         if ((deletedAt[id] || 0) >= remoteTime) {
-          uploads.push({ id, deleted: true, modifiedAt: new Date(deletedAt[id]).toISOString() });
+          uploads.push({ kind: 'entry', id, deleted: true,
+            modifiedAt: new Date(deletedAt[id]).toISOString() });
         } else {
           deleted.delete(id); delete deletedAt[id]; byId.set(id, remote); changed = true;
         }
@@ -56,18 +58,21 @@ const MigraineSyncData = (() => {
         || (remoteTime === entryTime(local) && !sameEntry(remote, local))) {
         byId.set(id, remote); changed = true;
       } else if (entryTime(local) > remoteTime) {
-        uploads.push({ id, deleted: false, modifiedAt: local.updatedAt || local.at, entry: local });
+        uploads.push({ kind: 'entry', id, deleted: false,
+          modifiedAt: local.updatedAt || local.at, entry: local });
       }
     }
 
     for (const entry of byId.values()) {
       if (!seenRemote.has(entry.id)) {
-        uploads.push({ id: entry.id, deleted: false, modifiedAt: entry.updatedAt || entry.at, entry });
+        uploads.push({ kind: 'entry', id: entry.id, deleted: false,
+          modifiedAt: entry.updatedAt || entry.at, entry });
       }
     }
     for (const id of deleted) {
       if (!seenRemote.has(id)) {
-        uploads.push({ id, deleted: true, modifiedAt: new Date(deletedAt[id]).toISOString() });
+        uploads.push({ kind: 'entry', id, deleted: true,
+          modifiedAt: new Date(deletedAt[id]).toISOString() });
       }
     }
 

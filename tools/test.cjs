@@ -90,6 +90,7 @@ test('sync reconciliation merges independent device additions', () => {
     modifiedAt: remote.updatedAt, entry: remote }], {}, Date.parse('2026-09-13T10:00:00Z'));
   assert.deepEqual(result.state.entries.map(entry => entry.id).sort(), ['local', 'remote']);
   assert.equal(result.uploads.some(record => record.id === 'local' && !record.deleted), true);
+  assert.equal(result.uploads.every(record => record.kind === 'entry'), true);
 });
 
 test('sync reconciliation applies the newest edit and preserves a newer local edit', () => {
@@ -103,6 +104,7 @@ test('sync reconciliation applies the newest edit and preserves a newer local ed
     modifiedAt: older.updatedAt, entry: older }]);
   assert.equal(retained.state.entries[0].notes, 'Original');
   assert.equal(retained.uploads[0].entry.notes, 'Original');
+  assert.equal(retained.uploads[0].kind, 'entry');
 });
 
 test('sync reconciliation propagates deletions without erasing a newer edit', () => {
@@ -115,6 +117,7 @@ test('sync reconciliation propagates deletions without erasing a newer edit', ()
     modifiedAt: '2026-09-10T10:00:00Z' }]);
   assert.equal(retained.state.entries.length, 1);
   assert.equal(retained.uploads[0].deleted, false);
+  assert.equal(retained.uploads[0].kind, 'entry');
 });
 
 // Exercise the actual app storage and draft functions in a small host, keeping
