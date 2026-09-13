@@ -11,7 +11,7 @@ const syncSignOut = document.getElementById('syncSignOut');
 const syncResult = document.getElementById('syncResult');
 const SYNC_META_KEY = 'migraine-log-sync-v1';
 const FIREBASE_VERSION = '12.18.0';
-const CHANGE_GENERATION = 2;
+const CHANGE_GENERATION = 3;
 const isEntryChange = MigraineSyncData.isEntryChange || ((record) => record?.kind === 'entry'
   || (record?.kind == null && typeof record?.id === 'string'
     && (record.deleted === true || record.entry != null)));
@@ -102,14 +102,16 @@ function appendChanges(records) {
   if (!activeUser || !records.length) return;
   const changes = firebaseApi.collection(db, 'users', activeUser.uid, 'changes');
   setSyncStatus(navigator.onLine ? 'Syncing' : 'Offline');
+  const batch = firebaseApi.writeBatch(db);
   for (const record of records) {
-    firebaseApi.addDoc(changes, { ...record, generation: CHANGE_GENERATION,
-      deviceId: syncMeta.deviceId }).catch((error) => {
-      console.error('Cloud write failed', error);
-      setSyncStatus(navigator.onLine ? 'Error' : 'Offline');
-      showSyncResult(friendlyError(error), true);
-    });
+    batch.set(firebaseApi.doc(changes), { ...record, generation: CHANGE_GENERATION,
+      deviceId: syncMeta.deviceId });
   }
+  batch.commit().catch((error) => {
+    console.error('Cloud write failed', error);
+    setSyncStatus(navigator.onLine ? 'Error' : 'Offline');
+    showSyncResult(friendlyError(error), true);
+  });
 }
 
 function localChanges(previous, current) {
