@@ -11,6 +11,9 @@ const syncSignOut = document.getElementById('syncSignOut');
 const syncResult = document.getElementById('syncResult');
 const SYNC_META_KEY = 'migraine-log-sync-v1';
 const FIREBASE_VERSION = '12.18.0';
+const isEntryChange = MigraineSyncData.isEntryChange || ((record) => record?.kind === 'entry'
+  || (record?.kind == null && typeof record?.id === 'string'
+    && (record.deleted === true || record.entry != null)));
 
 let firebaseApi;
 let auth;
@@ -153,7 +156,7 @@ function validCloudSettings(record) {
 async function applySnapshot(snapshot) {
   if (!activeUser) return;
   const records = snapshot.docs.map(item => ({ ...item.data(), cloudId: item.id }));
-  const remoteEntries = newest(records.filter(MigraineSyncData.isEntryChange), record => record.id);
+  const remoteEntries = newest(records.filter(isEntryChange), record => record.id);
   const remoteSettings = newest(records.filter(record => record.kind === 'settings'), () => 'settings')[0];
   const current = syncBridge.getState();
   for (const id of current.deletedIds) {
