@@ -11,7 +11,7 @@ const syncSignOut = document.getElementById('syncSignOut');
 const syncResult = document.getElementById('syncResult');
 const SYNC_META_KEY = 'migraine-log-sync-v1';
 const FIREBASE_VERSION = '12.18.0';
-const CHANGE_GENERATION = 3;
+const CHANGE_GENERATION = 4;
 const isEntryChange = MigraineSyncData.isEntryChange || ((record) => record?.kind === 'entry'
   || (record?.kind == null && typeof record?.id === 'string'
     && (record.deleted === true || record.entry != null)));
@@ -247,13 +247,9 @@ async function startSync() {
   const firebaseApp = appApi.initializeApp(syncConfig);
   auth = authApi.getAuth(firebaseApp);
   await authApi.setPersistence(auth, authApi.browserLocalPersistence);
-  try {
-    db = firestoreApi.initializeFirestore(firebaseApp, {
-      localCache: firestoreApi.persistentLocalCache({ tabManager: firestoreApi.persistentMultipleTabManager() }),
-    });
-  } catch {
-    db = firestoreApi.getFirestore(firebaseApp);
-  }
+  // The diary itself is the durable offline source. Keeping Firestore's own
+  // persistent queue as well can retain obsolete retries across app upgrades.
+  db = firestoreApi.getFirestore(firebaseApp);
   firebaseApi = { ...authApi, ...firestoreApi };
   syncSignIn.disabled = false;
   syncSignIn.addEventListener('click', async () => {

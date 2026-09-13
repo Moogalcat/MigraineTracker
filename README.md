@@ -186,7 +186,7 @@ To connect Firebase:
    let a signed-in user read and append only their own change records; updates and
    deletions of cloud history are denied.
 
-Firestore keeps an offline cache after sign-in and sends queued changes after the
+The local diary continues working offline and uploads its saved state after the
 connection returns. Local drafts remain device-only and are never synced. Continue
 exporting backups: sync also propagates accidental edits and deletions.
 
