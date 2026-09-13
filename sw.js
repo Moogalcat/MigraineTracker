@@ -1,17 +1,17 @@
 /* Service worker: makes the app load and work with no network at all.
    Bump CACHE when you change any of the files below. */
-const CACHE = 'migraine-log-v41';
+const CACHE = 'migraine-log-v42';
 const FIREBASE_VERSION = '12.18.0';
 
 const SHELL = [
   '.',
   'index.html',
-  'styles.css?v=41',
-  'app.js?v=41',
-  'data.js?v=41',
-  'sync-data.js?v=41',
-  'sync.js?v=41',
-  'firebase-config.js?v=41',
+  'styles.css?v=42',
+  'app.js?v=42',
+  'data.js?v=42',
+  'sync-data.js?v=42',
+  'sync.js?v=42',
+  'firebase-config.js?v=42',
   'manifest.webmanifest',
   'icons/icon-192.png',
   'icons/icon-512.png',

@@ -17,6 +17,16 @@ test('sync recognises entry records written before the kind marker fix', () => {
   assert.equal(S.isEntryChange({ kind: 'settings', customTriggers: [] }), false);
 });
 
+test('sync collapses identical entries created independently on two devices', () => {
+  const first = row({ id: 'device-b', updatedAt: null });
+  const second = row({ id: 'device-a', updatedAt: null });
+  const result = S.reconcileEntries(state([first]), [{ id: second.id, deleted: false,
+    modifiedAt: second.at, entry: second }]);
+  assert.equal(result.state.entries.length, 1);
+  assert.equal(result.state.entries[0].id, 'device-a');
+  assert.equal(result.changed, true);
+});
+
 test('legacy ratings migrate without inventing an aura rating', () => {
   const e = D.parse([{ at, intensity: 'Severe' }], true).entries[0];
   assert.equal(e.headacheIntensity, 'Severe'); assert.equal(e.auraIntensity, null);
@@ -91,7 +101,8 @@ test('print period includes month boundaries and excludes future entries', () =>
 
 test('sync reconciliation merges independent device additions', () => {
   const local = state([row({ id: 'local', updatedAt: '2026-09-11T10:00:00Z' })]);
-  const remote = row({ id: 'remote', updatedAt: '2026-09-12T10:00:00Z' });
+  const remote = row({ id: 'remote', at: '2026-09-12T09:00:00Z',
+    updatedAt: '2026-09-12T10:00:00Z' });
   const result = S.reconcileEntries(local, [{ id: remote.id, deleted: false,
     modifiedAt: remote.updatedAt, entry: remote }], {}, Date.parse('2026-09-13T10:00:00Z'));
   assert.deepEqual(result.state.entries.map(entry => entry.id).sort(), ['local', 'remote']);

@@ -7,6 +7,17 @@ const MigraineSyncData = (() => {
     || (record?.kind == null && typeof record?.id === 'string'
       && (record.deleted === true || record.entry != null));
 
+  function dedupeEntries(entries) {
+    const unique = new Map();
+    for (const entry of entries) {
+      const key = LogData.contentKey(entry);
+      const existing = unique.get(key);
+      if (!existing || entryTime(entry) > entryTime(existing)
+        || (entryTime(entry) === entryTime(existing) && entry.id < existing.id)) unique.set(key, entry);
+    }
+    return [...unique.values()];
+  }
+
   function reconcileEntries(current, remoteRecords, tombstones = {}, now = Date.now()) {
     const byId = new Map(current.entries.map(entry => [entry.id, entry]));
     const deleted = new Set(current.deletedIds);
@@ -66,7 +77,11 @@ const MigraineSyncData = (() => {
       }
     }
 
-    for (const entry of byId.values()) {
+    const uniqueEntries = dedupeEntries([...byId.values()]);
+    if (uniqueEntries.length !== byId.size) changed = true;
+    const uniqueById = new Map(uniqueEntries.map(entry => [entry.id, entry]));
+
+    for (const entry of uniqueById.values()) {
       if (!seenRemote.has(entry.id)) {
         uploads.push({ kind: 'entry', id: entry.id, deleted: false,
           modifiedAt: entry.updatedAt || entry.at, entry });
@@ -80,7 +95,7 @@ const MigraineSyncData = (() => {
     }
 
     return {
-      state: { ...current, entries: [...byId.values()].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)),
+      state: { ...current, entries: [...uniqueById.values()].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)),
         deletedIds: [...deleted] },
       tombstones: deletedAt,
       uploads,
@@ -89,6 +104,6 @@ const MigraineSyncData = (() => {
     };
   }
 
-  return { entryTime, isEntryChange, reconcileEntries };
+  return { entryTime, isEntryChange, dedupeEntries, reconcileEntries };
 })();
 if (typeof module !== 'undefined') module.exports = MigraineSyncData;
