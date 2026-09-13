@@ -5,6 +5,8 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const D = require('../data.js');
+global.LogData = D;
+const S = require('../sync-data.js');
 const at = '2026-09-10T10:00:00.000Z';
 const row = (overrides = {}) => D.normalise({ id: 'attack-1', at, notes: 'Original', ...overrides });
 const state = (entries = []) => ({ ...D.empty(), entries });
@@ -79,6 +81,40 @@ test('print period includes month boundaries and excludes future entries', () =>
   const result = D.reportEntries(entries, 'month', '2026-09', new Date('2026-09-12T18:00'));
   assert.deepEqual(result.map(e => e.id), ['1', '2']);
   assert.equal(D.reportEntries(entries, 'month', ''), null);
+});
+
+test('sync reconciliation merges independent device additions', () => {
+  const local = state([row({ id: 'local', updatedAt: '2026-09-11T10:00:00Z' })]);
+  const remote = row({ id: 'remote', updatedAt: '2026-09-12T10:00:00Z' });
+  const result = S.reconcileEntries(local, [{ id: remote.id, deleted: false,
+    modifiedAt: remote.updatedAt, entry: remote }], {}, Date.parse('2026-09-13T10:00:00Z'));
+  assert.deepEqual(result.state.entries.map(entry => entry.id).sort(), ['local', 'remote']);
+  assert.equal(result.uploads.some(record => record.id === 'local' && !record.deleted), true);
+});
+
+test('sync reconciliation applies the newest edit and preserves a newer local edit', () => {
+  const local = state([row({ updatedAt: '2026-09-11T10:00:00Z' })]);
+  const newer = row({ notes: 'Cloud', updatedAt: '2026-09-12T10:00:00Z' });
+  const applied = S.reconcileEntries(local, [{ id: newer.id, deleted: false,
+    modifiedAt: newer.updatedAt, entry: newer }]);
+  assert.equal(applied.state.entries[0].notes, 'Cloud');
+  const older = row({ notes: 'Old cloud', updatedAt: '2026-09-10T10:00:00Z' });
+  const retained = S.reconcileEntries(local, [{ id: older.id, deleted: false,
+    modifiedAt: older.updatedAt, entry: older }]);
+  assert.equal(retained.state.entries[0].notes, 'Original');
+  assert.equal(retained.uploads[0].entry.notes, 'Original');
+});
+
+test('sync reconciliation propagates deletions without erasing a newer edit', () => {
+  const local = state([row({ updatedAt: '2026-09-11T10:00:00Z' })]);
+  const removed = S.reconcileEntries(local, [{ id: 'attack-1', deleted: true,
+    modifiedAt: '2026-09-12T10:00:00Z' }]);
+  assert.equal(removed.state.entries.length, 0);
+  assert.deepEqual(removed.state.deletedIds, ['attack-1']);
+  const retained = S.reconcileEntries(local, [{ id: 'attack-1', deleted: true,
+    modifiedAt: '2026-09-10T10:00:00Z' }]);
+  assert.equal(retained.state.entries.length, 1);
+  assert.equal(retained.uploads[0].deleted, false);
 });
 
 // Exercise the actual app storage and draft functions in a small host, keeping

@@ -140,7 +140,13 @@ function loadMeta() {
 
 const valid = LogData.valid;
 
-function persistState(next, recovering = false) {
+function notifySync() {
+  try {
+    if (typeof window.MigraineSyncStateChanged === 'function') window.MigraineSyncStateChanged();
+  } catch (err) { console.warn('Could not queue cloud sync', err); }
+}
+
+function persistState(next, recovering = false, fromSync = false) {
   if (storageBlocked && !recovering) return false;
   try {
     if (!recovering && localStorage.getItem(KEY) !== lastRaw) {
@@ -157,6 +163,7 @@ function persistState(next, recovering = false) {
     customTriggers = saved.customTriggers;
     storageBlocked = false;
     $('appError').hidden = true;
+    if (!fromSync) notifySync();
     return true;
   } catch (err) { console.error(err); return false; }
 }
@@ -1007,6 +1014,21 @@ applyTheme();
 // A restored draft must be reachable even if its entry is older than page one.
 for (const id of drafts.keys()) visibleCount = Math.max(visibleCount, entries.findIndex(e => e.id === id) + 1);
 render();
+
+window.MigraineAppSync = Object.freeze({
+  getState() { return JSON.parse(JSON.stringify(state)); },
+  applyState(value) {
+    try {
+      const incoming = LogData.parse(value, true);
+      if (!persistState(incoming, false, true)) return false;
+      applyTheme(); render();
+      return true;
+    } catch (err) {
+      console.error('Cloud data could not be applied', err);
+      return false;
+    }
+  },
+});
 
 // Keep the "Today / Yesterday" labels honest if the app sits open past midnight.
 document.addEventListener('visibilitychange', () => {

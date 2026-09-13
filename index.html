@@ -73,6 +73,16 @@
       <label for="theme">Colour theme</label>
       <select id="theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
     </details>
+    <details class="system-feature" id="syncPanel">
+      <summary>Sync between devices<span class="panel-status" id="syncStatus"> · Setup needed</span></summary>
+      <p class="note" id="syncDescription">Sign in with the same Google account on each device to keep saved entries in sync. Logging continues to work offline.</p>
+      <p class="sync-account" id="syncAccount" hidden></p>
+      <div class="row">
+        <button type="button" class="btn btn-ghost btn-sm" id="syncSignIn" disabled>Sign in with Google</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="syncSignOut" hidden>Sign out</button>
+      </div>
+      <p id="syncResult" class="notice" role="status">Cloud sync still needs to be connected.</p>
+    </details>
     <details class="browser-only system-feature">
       <summary>Install this app</summary>
       <ul class="install-steps">
@@ -83,10 +93,7 @@
     </details>
     <details class="system-feature">
       <summary>Backup &amp; data<span class="panel-status" id="backupStatus"></span></summary>
-      <p class="note">
-        Entries are stored only on this device, in this browser. Nothing is uploaded anywhere.
-        Export a backup now and then so you don't lose your history.
-      </p>
+      <p class="note">Entries stay on this device unless you enable Sync. Keep an exported backup even when syncing so you can recover from accidental changes.</p>
       <div class="row">
         <button type="button" class="btn btn-ghost btn-sm" id="exportBtn">Export backup</button>
         <button type="button" class="btn btn-ghost btn-sm" id="importBtn">Import backup</button>
@@ -139,6 +146,9 @@
 </template>
 
 <script src="data.js"></script>
+<script src="sync-data.js"></script>
 <script src="app.js"></script>
+<script src="firebase-config.js"></script>
+<script type="module" src="sync.js"></script>
 </body>
 </html>

@@ -8,3 +8,7 @@ desktop.ini
 
 # Local diary imports contain private health data
 migraine-log-*-import.json
+
+# Firebase CLI local state and logs
+.firebase/
+firebase-debug.log*

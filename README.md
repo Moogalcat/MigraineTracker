@@ -23,10 +23,12 @@ current time; every other detail is optional and can be edited later.
   saved entries, ratings, possible triggers and notes.
 - **Appearance:** choose System, Light or Dark independently of the device setting.
 - **Offline:** the service worker caches the complete app after the first visit.
-- **Private:** no accounts, dependencies, analytics or uploads. Data stays in this
-  browser on this device. Exports and printed summaries contain your diary data.
+- **Private by default:** data stays in this browser unless you choose to sign in
+  and sync. Optional Firebase sync keeps each account's records separate. Exports
+  and printed summaries contain your diary data.
 
-No build step or framework. Plain HTML, CSS and JavaScript.
+No build step or framework. Plain HTML, CSS and JavaScript, with pinned Firebase
+browser modules loaded only when cloud sync has been configured.
 
 ## Files
 
@@ -36,6 +38,8 @@ No build step or framework. Plain HTML, CSS and JavaScript.
 | `styles.css` | Responsive light/dark UI and print styles |
 | `app.js` | Storage, drafts, editing, rendering, export and printing |
 | `data.js` | Validation, migration, backup merging and date/report helpers |
+| `sync-data.js`, `sync.js` | Per-entry cloud conflict resolution and optional Firebase sync |
+| `firebase-config.js`, `firestore.rules` | Public Firebase connection settings and private per-user access rules |
 | `sw.js` | Offline caching |
 | `manifest.webmanifest`, `icons/` | Installation metadata and icons |
 | `tools/test.cjs` | Dependency-free data and storage regression tests |
@@ -56,34 +60,21 @@ service workers need `http://localhost` or HTTPS.
 Service workers require HTTPS, so the app needs hosting. There is no build
 step, so any static host works — point it at the repo root.
 
-This repo deploys via **Cloudflare Pages**, which serves a public site from a
-*private* GitHub repo on the free plan (GitHub Pages cannot: Pages from a
-private repo needs a paid GitHub plan).
-
-1. Sign in at <https://dash.cloudflare.com> → **Workers & Pages** →
-   **Create** → **Pages** → **Connect to Git**.
-2. Authorize Cloudflare's GitHub app. Choose *Only select repositories* and
-   pick just this one.
-3. Select the repo, branch `main`.
-4. Build settings: framework preset **None**, build command **empty**, build
-   output directory **`/`**.
-5. **Save and Deploy.**
-
-The site lands at `https://<project>.pages.dev`, and every `git push` to `main`
-redeploys it.
+This public repo deploys from the root of `main` with **GitHub Pages** at
+<https://moogalcat.github.io/MigraineTracker/>. Every push to `main` starts a
+new Pages deployment.
 
 Search engines are asked to stay away three times over, so it works whichever
-host you use: a `noindex` meta tag in `index.html` (honoured anywhere),
-`robots.txt` (honoured anywhere), and `_headers` setting `X-Robots-Tag`
-(**Cloudflare only** — GitHub Pages ignores `_headers` entirely, as it does the
-`Cache-Control: no-cache` that file sets on `sw.js`).
+host you use: a `noindex` meta tag in `index.html` and `robots.txt`. The `_headers`
+file provides another `X-Robots-Tag` header only on hosts that support that file;
+GitHub Pages ignores it.
 
 None of that is access control — **anyone with the URL can open the app**. It
-only keeps it out of search results. The app holds no data of yours on the
-server in any case: entries never leave your device.
+only keeps it out of search results. Without sync, diary data stays in the
+browser. After Google sign-in, saved entries are stored in Cloud Firestore and
+the security rules restrict them to that Google account.
 
-`.nojekyll` is there only so the repo also works on GitHub Pages unchanged, if
-you ever switch.
+`.nojekyll` keeps GitHub Pages from processing the static files with Jekyll.
 
 ## Install the app
 
@@ -171,6 +162,34 @@ Entries, custom triggers, preferences and deleted IDs are written together as
 one storage value, so an import cannot save only part of that state. The backup
 reminder is separate; a reminder write failure does not undo a successful save.
 
+## Sync between devices
+
+Sync is optional. Without Firebase configuration the app behaves exactly as a
+local-only diary. Once configured, open **Sync between devices** and sign in with
+the same Google account on every device. Existing entries upload on the first
+successful connection. Later edits and deletions are appended individually, so
+independent offline changes from different devices can be merged safely. The
+latest modification of the same entry wins. Appearance and custom-trigger changes
+use their latest modification time.
+
+To connect Firebase:
+
+1. Create a project at <https://console.firebase.google.com>, register a Web app,
+   and leave Google Analytics disabled unless you specifically want it.
+2. Create a Cloud Firestore database in production mode.
+3. Under **Authentication → Sign-in method**, enable Google. Add the deployed
+   site's hostname under **Authentication → Settings → Authorized domains**.
+4. Copy the Web app's `firebaseConfig` object into `firebase-config.js`, replacing
+   `null`. These browser identifiers are public configuration; never add a service
+   account key or other private credential to the repository.
+5. In Firestore's **Rules** tab, paste `firestore.rules` and publish it. The rules
+   let a signed-in user read and append only their own change records; updates and
+   deletions of cloud history are denied.
+
+Firestore keeps an offline cache after sign-in and sends queued changes after the
+connection returns. Local drafts remain device-only and are never synced. Continue
+exporting backups: sync also propagates accidental edits and deletions.
+
 ## Storage protection and recovery
 
 The current state uses `migraine-log-v2`. On first use it reads the old
@@ -191,9 +210,9 @@ key. If that archive cannot be written, restoration stops without overwriting
 anything. A recovery download contains raw storage values for investigation; it
 is not a normal importable diary backup.
 
-The app does not sync automatically. Clearing browser/site data or resetting the
-device can still remove the diary, drafts and local recovery copies. Keep exported
-backups outside the browser.
+Without cloud sync, clearing browser/site data or resetting the device can remove
+the diary, drafts and local recovery copies. With sync, unsaved drafts and recovery
+copies remain device-only. Keep exported backups outside the browser either way.
 
 ## Design and accessibility
 
