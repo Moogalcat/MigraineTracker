@@ -119,6 +119,11 @@ main, .topbar, .footer {
 }
 .tally:empty { display: none; }
 
+@media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
+  .browser-only { display: none; }
+}
+.standalone .browser-only { display: none; }
+
 .actions {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -267,6 +272,8 @@ input:focus-visible, textarea:focus-visible, button:focus-visible, summary:focus
 .footer details:first-child { border-top: 0; }
 summary { padding: 14px 0; color: var(--text-dim); font-size: 0.92rem; font-weight: 650; cursor: pointer; }
 .note { max-width: 32rem; color: var(--text-dim); font-size: 0.92rem; line-height: 1.6; }
+.install-steps { max-width: 34rem; margin: 10px 0 20px; padding-left: 1.2rem; color: var(--text-dim); font-size: 0.92rem; line-height: 1.6; }
+.install-steps li + li { margin-top: 7px; }
 .panel-status { font-weight: 400; }
 .panel-status.stale { color: var(--accent); font-weight: 650; }
 

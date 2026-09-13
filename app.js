@@ -1,6 +1,10 @@
 /* Migraine Log — all data stays in this browser's localStorage. */
 'use strict';
 
+if (window.navigator && window.navigator.standalone === true && document.documentElement) {
+  document.documentElement.classList.add('standalone');
+}
+
 const LEGACY_KEY = 'migraine-log-v1';
 const KEY = 'migraine-log-v2';
 const DRAFT_PREFIX = 'migraine-log-draft-v1:';
