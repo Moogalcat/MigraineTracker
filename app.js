@@ -885,12 +885,18 @@ function downloadJSON(value, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
+// Failures these buttons report in the shared error banner. Each clears its own message before trying again,
+// so a later success never leaves an old failure showing, while other errors stay put.
+const EXPORT_REMINDER_ERROR = 'Export started, but the backup reminder could not be saved.';
+const RECOVERY_READ_ERROR = 'Browser storage cannot be read. Keep this page open and try allowing site storage before retrying.';
+
 $('exportBtn').addEventListener('click', () => {
   if (storageBlocked) return;
+  hideError(EXPORT_REMINDER_ERROR);
   const stamp = toInput(new Date()).replace(/[:T]/g, '-');
   downloadJSON({ ...state, exportedAt: new Date().toISOString() }, `migraine-log-${stamp}.json`);
   const nextMeta = { lastExportAt: new Date().toISOString(), pending: 0 };
-  if (!writeJSON(META_KEY, nextMeta)) { showError('Export started, but the backup reminder could not be saved.'); return; }
+  if (!writeJSON(META_KEY, nextMeta)) { showError(EXPORT_REMINDER_ERROR); return; }
   meta = nextMeta; renderBackupStatus(); toast('Export started — check your downloads. Drafts are not included.');
 });
 
@@ -903,8 +909,9 @@ function recoveryCopy() {
   return { recoveredAt: new Date().toISOString(), raw };
 }
 $('recoveryExport').addEventListener('click', () => {
+  hideError(RECOVERY_READ_ERROR);
   try { downloadJSON(recoveryCopy(), `migraine-log-recovery-${Date.now()}.json`); toast('Recovery download started — check your downloads.'); }
-  catch { showError('Browser storage cannot be read. Keep this page open and try allowing site storage before retrying.'); }
+  catch { showError(RECOVERY_READ_ERROR); }
 });
 $('recoveryRetry').addEventListener('click', () => location.reload());
 $('importBtn').addEventListener('click', () => $('importFile').click());
@@ -995,6 +1002,10 @@ window.addEventListener('beforeprint', buildPrintSummary);
 /* ---- Toast ------------------------------------------------------------- */
 
 let toastTimer;
+function hideError(message) {
+  const el = $('appError');
+  if (el.textContent === message) el.hidden = true;
+}
 function showError(message, li) {
   const el = li ? li.querySelector('.entry-error') : $('appError');
   el.textContent = message; el.hidden = false;

@@ -251,22 +251,29 @@ test('a first settings sync combines custom triggers, and afterwards the newer s
 // browser rendering for the separate visual/manual checks.
 function host(initial = {}, failWrites = false) {
   const storage = new Map(Object.entries(initial));
+  const failing = new Set();
   const elements = new Map();
   const get = id => {
-    if (!elements.has(id)) elements.set(id, { textContent: '', hidden: true, value: '', addEventListener() {} });
+    if (!elements.has(id)) {
+      const listeners = {};
+      elements.set(id, { textContent: '', hidden: true, value: '', listeners,
+        classList: { toggle() {}, add() {}, remove() {}, contains: () => false },
+        addEventListener(type, handler) { listeners[type] = handler; } });
+    }
     return elements.get(id);
   };
   const context = vm.createContext({ LogData: D, console: { error() {}, warn() {} }, Date, Map, Set,
-    document: { getElementById: get }, window: { addEventListener() {} },
+    setTimeout: () => 0, clearTimeout() {}, Blob: class {}, URL: { createObjectURL: () => 'blob:test', revokeObjectURL() {} },
+    document: { getElementById: get, createElement: () => ({ click() {} }) }, window: { addEventListener() {} },
     matchMedia: () => ({ matches: false, addEventListener() {} }),
     localStorage: { get length() { return storage.size; }, key: i => [...storage.keys()][i],
       getItem: key => storage.get(key) ?? null,
-      setItem: (key, value) => { if (failWrites) throw Error('quota'); storage.set(key, value); },
+      setItem: (key, value) => { if (failWrites || failing.has(key)) throw Error('quota'); storage.set(key, value); },
       removeItem: key => storage.delete(key) },
   });
   const source = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8').split('/* ---- Boot')[0];
   vm.runInContext(source, context);
-  return { storage, elements, run: source => vm.runInContext(source, context) };
+  return { storage, elements, failing, run: source => vm.runInContext(source, context) };
 }
 test('malformed stored JSON locks writes and preserves the exact original bytes', () => {
   const original = '{broken: medical data';
@@ -337,6 +344,21 @@ test('malformed draft fields lock writes instead of being silently replaced', ()
   const h = host({ 'migraine-log-draft-v1:x': JSON.stringify(draft) });
   assert.equal(h.run('storageBlocked'), true);
   assert.equal(h.run('persistEntries([])'), false);
+});
+test('a successful export clears the error an earlier export left, but not other errors', () => {
+  const h = host({ 'migraine-log-v2': JSON.stringify(state([row()])) });
+  const appError = h.run("$('appError')");
+  const exportBackup = () => h.elements.get('exportBtn').listeners.click();
+  h.failing.add('migraine-log-meta-v1');
+  exportBackup();
+  assert.equal(appError.hidden, false);
+  assert.match(appError.textContent, /backup reminder could not be saved/);
+  h.failing.clear();
+  exportBackup();
+  assert.equal(appError.hidden, true);
+  h.run("showError('Your log changed in another tab. Reload this page before saving; your local draft is kept.')");
+  exportBackup();
+  assert.equal(appError.hidden, false);
 });
 test('a damaged backup reminder cannot crash or lock the diary', () => {
   const h = host({ 'migraine-log-meta-v1': '{"lastExportAt":"bad date","pending":-10}' });
