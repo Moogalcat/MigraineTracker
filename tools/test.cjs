@@ -415,13 +415,24 @@ test('old sync records are removed only for entries this device has or has delet
   const records = [
     copy('first-sync-copy', 'kept-entry'), // written before records had a kind or generation
     copy('generation-2-copy', 'deleted-entry', { kind: 'entry', generation: 2 }),
-    copy('generation-3-copy', 'only-in-cloud', { kind: 'entry', generation: 3 }),
-    copy('another-old-copy', 'only-in-cloud'),
+    copy('generation-3-copy', 'only-in-cloud', { kind: 'entry', generation: 3, entry: row({ id: 'only-in-cloud', notes: 'Never on this device' }) }),
+    copy('another-old-copy', 'only-in-cloud', { entry: row({ id: 'only-in-cloud', notes: 'Never on this device' }) }),
     { cloudId: 'old-deletion', kind: 'entry', id: 'kept-entry', deleted: true, modifiedAt: at, generation: 3 },
     { cloudId: 'old-settings', kind: 'settings', modifiedAt: at, customTriggers: ['Old'], preferences: { theme: 'dark' } },
     copy('current-copy', 'kept-entry', { kind: 'entry', generation: 4 }),
   ];
   assert.deepEqual(S.legacyCopies(records, current, 4), { remove: ['first-sync-copy', 'generation-2-copy'], unknownEntries: 1 });
+});
+test('old sync records that exactly copy a diary entry under another ID are removed too', () => {
+  // An early import gave the same attacks different IDs on different devices.
+  const diaryEntry = row({ id: 'current-id', at: '2017-06-16T10:00:00.000Z', notes: '' });
+  const records = [
+    { cloudId: 'exact-copy', id: 'sheet-20170616-1', deleted: false, modifiedAt: diaryEntry.at, entry: { ...diaryEntry, id: 'sheet-20170616-1' } },
+    { cloudId: 'same-time-other-notes', id: 'sheet-20170616-2', deleted: false, modifiedAt: diaryEntry.at,
+      entry: row({ id: 'sheet-20170616-2', at: '2017-06-16T10:00:00.000Z', notes: 'A different attack' }) },
+    { cloudId: 'unreadable', id: 'sheet-broken', deleted: false, modifiedAt: at, entry: { at: 'not a date' } },
+  ];
+  assert.deepEqual(S.legacyCopies(records, state([diaryEntry]), 4), { remove: ['exact-copy'], unknownEntries: 2 });
 });
 test('a damaged backup reminder cannot crash or lock the diary', () => {
   const h = host({ 'migraine-log-meta-v1': '{"lastExportAt":"bad date","pending":-10}' });

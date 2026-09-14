@@ -12,6 +12,10 @@ const syncResult = document.getElementById('syncResult');
 const SYNC_META_KEY = 'migraine-log-sync-v1';
 const FIREBASE_VERSION = '12.18.0';
 const CHANGE_GENERATION = 4;
+// Firestore applies its security rules limits per request (20 document lookups for a batch, and the rules look up
+// config/access for every write), so cloud writes and deletes go in small batches.
+const WRITE_BATCH_SIZE = 10;
+const LEGACY_CLEANUP_VERSION = 2;
 const isEntryChange = MigraineSyncData.isEntryChange || ((record) => record?.kind === 'entry'
   || (record?.kind == null && typeof record?.id === 'string'
     && (record.deleted === true || record.entry != null)));
@@ -57,11 +61,12 @@ function loadSyncMeta() {
       settingsModifiedAt,
       // Before this flag existed, settings were only dated while signed in, so a date means they had synced.
       settingsSynced: typeof value.settingsSynced === 'boolean' ? value.settingsSynced : settingsModifiedAt > 0,
-      legacyCleaned: value.legacyCleaned === true,
+      // The first cleanup matched IDs only and stored legacyCleaned; that counts as version 1.
+      legacyCleanup: Number.isFinite(value.legacyCleanup) ? value.legacyCleanup : value.legacyCleaned === true ? 1 : 0,
       tombstones: Object.fromEntries(Object.entries(tombstones).filter(([, time]) => Number.isFinite(time))),
     };
   } catch {
-    return { deviceId: LogData.uid(), accountUid: null, settingsModifiedAt: 0, settingsSynced: false, legacyCleaned: false,
+    return { deviceId: LogData.uid(), accountUid: null, settingsModifiedAt: 0, settingsSynced: false, legacyCleanup: 0,
       tombstones: {} };
   }
 }
@@ -76,7 +81,7 @@ saveSyncMeta();
 // Another account starts clean, so no deletion markers or settings time carry over from the last one.
 function resetSyncMeta(accountUid) {
   syncMeta = { deviceId: syncMeta.deviceId, accountUid, settingsModifiedAt: 0, settingsSynced: false,
-    legacyCleaned: false, tombstones: {} };
+    legacyCleanup: 0, tombstones: {} };
   saveSyncMeta();
 }
 
@@ -133,8 +138,14 @@ function appendChanges(records) {
   if (!sendable.length) return;
   const changes = firebaseApi.collection(db, 'users', activeUser.uid, 'changes');
   setSyncStatus(navigator.onLine ? 'Syncing' : 'Offline');
+  for (let start = 0; start < sendable.length; start += WRITE_BATCH_SIZE) {
+    commitChanges(changes, sendable.slice(start, start + WRITE_BATCH_SIZE));
+  }
+}
+
+function commitChanges(changes, records) {
   const batch = firebaseApi.writeBatch(db);
-  for (const record of sendable) {
+  for (const record of records) {
     batch.set(firebaseApi.doc(changes), { ...record, generation: CHANGE_GENERATION,
       deviceId: syncMeta.deviceId });
   }
@@ -195,7 +206,6 @@ function validCloudSettings(record) {
     && record.preferences && LogData.themes.includes(record.preferences.theme);
 }
 
-const DELETE_BATCH_SIZE = 400;
 const removalRequested = new Set();
 
 // The cloud keeps only each entry's newest record: older copies go once a newer copy reaches the server, and a
@@ -204,9 +214,9 @@ const removalRequested = new Set();
 function removeSupersededContent(records) {
   const cloudIds = MigraineSyncData.supersededContent(records).filter(id => !removalRequested.has(id));
   const changes = firebaseApi.collection(db, 'users', activeUser.uid, 'changes');
-  for (let start = 0; start < cloudIds.length; start += DELETE_BATCH_SIZE) {
+  for (let start = 0; start < cloudIds.length; start += WRITE_BATCH_SIZE) {
     const batch = firebaseApi.writeBatch(db);
-    for (const cloudId of cloudIds.slice(start, start + DELETE_BATCH_SIZE)) {
+    for (const cloudId of cloudIds.slice(start, start + WRITE_BATCH_SIZE)) {
       removalRequested.add(cloudId);
       batch.delete(firebaseApi.doc(changes, cloudId));
     }
@@ -215,11 +225,12 @@ function removeSupersededContent(records) {
 }
 
 // Records from sync versions before generation 4 are invisible to the app but can still hold old notes. Once per
-// device, remove the copies of entries this device has or has deleted; copies of any other entry stay in place.
+// device, and again whenever LEGACY_CLEANUP_VERSION rises, remove the copies of entries this device has, has deleted,
+// or holds an exact copy of under another ID; copies that match nothing stay in place.
 let legacyCheckStarted = false;
 let legacyNotice = '';
 async function removeLegacyCopies() {
-  if (legacyCheckStarted || syncMeta.legacyCleaned || !activeUser || refusalMessage) return;
+  if (legacyCheckStarted || syncMeta.legacyCleanup >= LEGACY_CLEANUP_VERSION || !activeUser || refusalMessage) return;
   legacyCheckStarted = true;
   const user = activeUser;
   const changes = firebaseApi.collection(db, 'users', user.uid, 'changes');
@@ -228,13 +239,13 @@ async function removeLegacyCopies() {
     if (activeUser !== user) return;
     const records = snapshot.docs.map(item => ({ ...item.data(), cloudId: item.id }));
     const { remove, unknownEntries } = MigraineSyncData.legacyCopies(records, syncBridge.getState(), CHANGE_GENERATION);
-    for (let start = 0; start < remove.length; start += DELETE_BATCH_SIZE) {
+    for (let start = 0; start < remove.length; start += WRITE_BATCH_SIZE) {
       const batch = firebaseApi.writeBatch(db);
-      for (const cloudId of remove.slice(start, start + DELETE_BATCH_SIZE)) batch.delete(firebaseApi.doc(changes, cloudId));
+      for (const cloudId of remove.slice(start, start + WRITE_BATCH_SIZE)) batch.delete(firebaseApi.doc(changes, cloudId));
       await batch.commit();
     }
     if (activeUser !== user) return;
-    syncMeta.legacyCleaned = true;
+    syncMeta.legacyCleanup = LEGACY_CLEANUP_VERSION;
     saveSyncMeta();
     if (unknownEntries) {
       legacyNotice = `${unknownEntries} ${unknownEntries === 1 ? 'entry' : 'entries'} from an earlier sync version `

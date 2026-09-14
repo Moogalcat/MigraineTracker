@@ -185,8 +185,9 @@ the account's, so triggers added on either side are kept.
 
 Cloud records from earlier sync versions (before `generation` 4) are ignored. Once
 per device, the app removes their copies of entries that device already has or has
-deleted, and leaves copies of any other entry in place, with a message saying how
-many.
+deleted, or holds an exact copy of under another ID, and leaves copies of any other
+entry in place, with a message saying how many. Uploads and deletes go to the cloud
+10 at a time, because Firestore applies its security rules limits per request.
 
 A device's diary stays with the Google account it first synced with. Signing in
 with a different account asks first: OK removes this device's diary, custom

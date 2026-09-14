@@ -180,16 +180,19 @@ const MigraineSyncData = (() => {
   }
 
   // Old copies from sync versions before `generation` that can be removed: records holding the contents of an entry
-  // this device has or has deleted, whose current record lives in the current generation. Copies of entries the
-  // device has never seen are only counted, never removed, so nothing that exists only in the cloud is lost.
+  // this device has or has deleted, or an exact copy of a diary entry saved under another ID (an early import gave
+  // the same attacks different IDs). Their current record lives in the current generation. Copies that match
+  // nothing are only counted, never removed, so nothing that exists only in the cloud is lost.
   function legacyCopies(records, state, generation) {
     const known = new Set([...state.entries.map(entry => entry.id), ...state.deletedIds]);
+    const copies = new Set(state.entries.map(LogData.contentKey));
     const remove = [];
     const unknown = new Set();
     for (const record of records) {
       if (record.generation === generation || record.deleted === true || record.entry == null
         || typeof record.id !== 'string' || !record.id) continue;
-      if (known.has(record.id)) remove.push(record.cloudId);
+      const copy = LogData.valid(record.entry) && copies.has(LogData.contentKey(LogData.normalise(record.entry)));
+      if (known.has(record.id) || copy) remove.push(record.cloudId);
       else unknown.add(record.id);
     }
     return { remove, unknownEntries: unknown.size };
