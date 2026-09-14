@@ -7,17 +7,15 @@ const MigraineSyncData = (() => {
     || (record?.kind == null && typeof record?.id === 'string'
       && (record.deleted === true || record.entry != null));
 
+  // Only identical copies under different IDs are collapsed. Sharing a start time is not enough:
+  // the editor stores whole minutes, so separate entries saved for the same minute must both survive.
   function dedupeEntries(entries) {
     const unique = new Map();
     for (const entry of entries) {
-      const key = entry.at;
+      const key = LogData.contentKey(entry);
       const existing = unique.get(key);
-      const detailScore = value => (value.notes?.length || 0) + (value.triggers?.length || 0)
-        + (value.auraIntensity ? 1 : 0) + (value.headacheIntensity ? 1 : 0);
       if (!existing || entryTime(entry) > entryTime(existing)
-        || (entryTime(entry) === entryTime(existing) && detailScore(entry) > detailScore(existing))
-        || (entryTime(entry) === entryTime(existing) && detailScore(entry) === detailScore(existing)
-          && entry.id < existing.id)) unique.set(key, entry);
+        || (entryTime(entry) === entryTime(existing) && entry.id < existing.id)) unique.set(key, entry);
     }
     return [...unique.values()];
   }
@@ -27,7 +25,7 @@ const MigraineSyncData = (() => {
     const deleted = new Set(current.deletedIds);
     const deletedAt = { ...tombstones };
     const seenRemote = new Set();
-    const uploads = [];
+    let uploads = [];
     let changed = false;
     let invalid = 0;
 
@@ -82,8 +80,16 @@ const MigraineSyncData = (() => {
     }
 
     const uniqueEntries = dedupeEntries([...byId.values()]);
-    if (uniqueEntries.length !== byId.size) changed = true;
     const uniqueById = new Map(uniqueEntries.map(entry => [entry.id, entry]));
+    // Tombstone dropped copies so every device and the cloud keep the same survivor. The deletion must
+    // outrank the copy it replaces, even when that copy's edit time is ahead of this device's clock.
+    const duplicates = new Set([...byId.keys()].filter(id => !uniqueById.has(id)));
+    for (const id of duplicates) {
+      deleted.add(id);
+      deletedAt[id] = Math.max(now, entryTime(byId.get(id)) + 1);
+      changed = true;
+    }
+    uploads = uploads.filter(record => !duplicates.has(record.id));
 
     for (const entry of uniqueById.values()) {
       if (!seenRemote.has(entry.id)) {
@@ -92,7 +98,7 @@ const MigraineSyncData = (() => {
       }
     }
     for (const id of deleted) {
-      if (!seenRemote.has(id)) {
+      if (!seenRemote.has(id) || duplicates.has(id)) {
         uploads.push({ kind: 'entry', id, deleted: true,
           modifiedAt: new Date(deletedAt[id]).toISOString() });
       }

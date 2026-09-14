@@ -27,13 +27,32 @@ test('sync collapses identical entries created independently on two devices', ()
   assert.equal(result.changed, true);
 });
 
-test('sync keeps the most detailed copy when duplicate timestamps have no edit time', () => {
-  const emptyCopy = row({ id: 'empty', updatedAt: null });
-  const detailedCopy = row({ id: 'detailed', updatedAt: null, notes: 'With details' });
-  const result = S.reconcileEntries(state([emptyCopy]), [{ id: detailedCopy.id, deleted: false,
-    modifiedAt: detailedCopy.at, entry: detailedCopy }]);
-  assert.equal(result.state.entries.length, 1);
-  assert.equal(result.state.entries[0].id, 'detailed');
+test('sync keeps separate entries saved for the same minute', () => {
+  // The editor stores whole minutes, so sharing a start time does not make two entries copies.
+  const aura = row({ id: 'aura', auraIntensity: 'Moderate', notes: 'Zigzag lines while driving' });
+  const headache = row({ id: 'headache', headacheIntensity: 'Severe', notes: '', updatedAt: '2026-09-11T10:00:00Z' });
+  const firstSync = S.reconcileEntries(state([aura, headache]), []);
+  assert.deepEqual(firstSync.state.entries.map(entry => entry.id).sort(), ['aura', 'headache']);
+  assert.deepEqual(firstSync.uploads.map(record => record.id).sort(), ['aura', 'headache']);
+  assert.equal(firstSync.changed, false);
+  const fromCloud = S.reconcileEntries(state([aura]), [{ id: headache.id, deleted: false,
+    modifiedAt: headache.updatedAt, entry: headache }]);
+  assert.deepEqual(fromCloud.state.entries.map(entry => entry.id).sort(), ['aura', 'headache']);
+  assert.deepEqual(fromCloud.state.deletedIds, []);
+});
+
+test('sync tombstones the dropped identical copy so every device keeps the same survivor', () => {
+  // A device clock running ahead must not let the dropped copy outrank its own deletion.
+  const kept = row({ id: 'device-a', updatedAt: '2026-09-21T10:00:00Z' });
+  const dropped = row({ id: 'device-b', updatedAt: '2026-09-20T10:00:00Z' });
+  const result = S.reconcileEntries(state([dropped]), [{ id: kept.id, deleted: false,
+    modifiedAt: kept.updatedAt, entry: kept }], {}, Date.parse('2026-09-13T10:00:00Z'));
+  assert.deepEqual(result.state.entries.map(entry => entry.id), ['device-a']);
+  assert.deepEqual(result.state.deletedIds, ['device-b']);
+  const uploads = result.uploads.filter(record => record.id === 'device-b');
+  assert.equal(uploads.length, 1);
+  assert.equal(uploads[0].deleted, true);
+  assert.ok(Date.parse(uploads[0].modifiedAt) > Date.parse(dropped.updatedAt));
 });
 
 test('legacy ratings migrate without inventing an aura rating', () => {
