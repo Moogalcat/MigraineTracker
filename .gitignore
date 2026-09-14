@@ -12,3 +12,4 @@ migraine-log-*-import.json
 # Firebase CLI local state and logs
 .firebase/
 firebase-debug.log*
+firestore-debug.log

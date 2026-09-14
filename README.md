@@ -43,6 +43,7 @@ browser modules loaded only when cloud sync has been configured.
 | `sw.js` | Offline caching |
 | `manifest.webmanifest`, `icons/` | Installation metadata and icons |
 | `tools/test.cjs` | Dependency-free data and storage regression tests |
+| `tools/rules-test.cjs` | Firestore rules tests, run in the local emulator |
 | `tools/make-icons.ps1` | Icon generation |
 | `_headers`, `robots.txt` | Hosting headers and indexing preferences |
 
@@ -190,7 +191,10 @@ To connect Firebase:
    account key or other private credential to the repository.
 5. In Firestore's **Rules** tab, paste `firestore.rules` and publish it. The rules
    let a signed-in user read and append only their own change records; updates and
-   deletions of cloud history are denied.
+   deletions of existing records are denied, with one exception: once an entry's
+   deletion reaches the cloud, the app removes that entry's earlier contents and keeps
+   only a small deletion record (the entry ID and time) so other devices remove it
+   too. Deletion and settings records can never be deleted.
 
 The local diary continues working offline and uploads its saved state after the
 connection returns. Local drafts remain device-only and are never synced. Continue
@@ -242,6 +246,12 @@ The tests cover legacy migration, intensity validation, corrupt storage protecti
 failed writes, stale tabs, draft recovery, backup conflicts and duplicate handling,
 and report date boundaries. Also check the browser UI for narrow-screen
 layout, keyboard navigation, saving/cancelling drafts and printing.
+
+The Firestore rules tests run in the local emulator, which needs Java 21 or newer:
+
+```sh
+npx firebase-tools emulators:exec --only firestore --project demo-migraine-log "node tools/rules-test.cjs"
+```
 
 When changing HTML, CSS or JavaScript, bump `CACHE` in `sw.js`. Add new runtime
 files to its `SHELL` list. Navigation is network-first with an offline/error fallback;

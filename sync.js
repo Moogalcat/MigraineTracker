@@ -164,9 +164,28 @@ function validCloudSettings(record) {
     && record.preferences && LogData.themes.includes(record.preferences.theme);
 }
 
+const DELETE_BATCH_SIZE = 400;
+const removalRequested = new Set();
+
+// A deleted entry keeps only its content-free deletion record in the cloud. Each record is tried once per
+// session, so rules that refuse the delete cannot start a retry loop; a refusal is only logged.
+function removeSupersededContent(records) {
+  const cloudIds = MigraineSyncData.supersededContent(records).filter(id => !removalRequested.has(id));
+  const changes = firebaseApi.collection(db, 'users', activeUser.uid, 'changes');
+  for (let start = 0; start < cloudIds.length; start += DELETE_BATCH_SIZE) {
+    const batch = firebaseApi.writeBatch(db);
+    for (const cloudId of cloudIds.slice(start, start + DELETE_BATCH_SIZE)) {
+      removalRequested.add(cloudId);
+      batch.delete(firebaseApi.doc(changes, cloudId));
+    }
+    batch.commit().catch(error => console.warn('Deleted entry contents could not be removed from the cloud', error));
+  }
+}
+
 async function applySnapshot(snapshot) {
   if (!activeUser) return;
-  const records = snapshot.docs.map(item => ({ ...item.data(), cloudId: item.id }));
+  const records = snapshot.docs.map(item => ({ ...item.data(), cloudId: item.id,
+    confirmed: !item.metadata.hasPendingWrites }));
   const remoteEntries = newest(records.filter(isEntryChange), record => record.id);
   const remoteSettings = newest(records.filter(record => record.kind === 'settings'), () => 'settings')[0];
   const current = syncBridge.getState();
@@ -205,7 +224,10 @@ async function applySnapshot(snapshot) {
   baseline = clone(next);
   saveSyncMeta();
 
-  if (!snapshot.metadata.fromCache) appendChanges(uploads);
+  if (!snapshot.metadata.fromCache) {
+    appendChanges(uploads);
+    removeSupersededContent(records);
+  }
   if (reconciled.invalid) showSyncResult(`${reconciled.invalid} unreadable cloud record${reconciled.invalid === 1 ? '' : 's'} were ignored.`, true);
   else if (!snapshot.metadata.hasPendingWrites) showSyncResult('');
   setSyncStatus(snapshot.metadata.hasPendingWrites ? (navigator.onLine ? 'Syncing' : 'Offline')

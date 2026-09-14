@@ -175,6 +175,24 @@ test('signing in keeps a diary with the Google account it synced with', () => {
   assert.equal(S.signInAction('alice', 'bob', { ...state(), deletedIds: ['old'] }), 'switch');
 });
 
+test('sync removes entry contents once a confirmed deletion supersedes them', () => {
+  const change = (cloudId, deleted, modifiedAt, overrides = {}) => ({ kind: 'entry', id: 'attack-1', cloudId,
+    deleted, modifiedAt, confirmed: true, ...(deleted ? {} : { entry: row() }), ...overrides });
+  const records = [
+    change('v1', false, '2026-09-13T10:00:00Z'),
+    change('v2', false, '2026-09-13T11:00:00Z'),
+    change('legacy-v0', false, '2026-09-13T09:30:00Z', { kind: undefined }),
+    change('tombstone', true, '2026-09-13T11:00:00Z'),
+    change('restored', false, '2026-09-13T12:00:00Z'),
+    change('other-entry', false, '2026-09-13T09:00:00Z', { id: 'other' }),
+    { kind: 'settings', cloudId: 'settings', modifiedAt: '2026-09-13T09:00:00Z', confirmed: true },
+  ];
+  assert.deepEqual(S.supersededContent(records), ['v1', 'v2', 'legacy-v0']);
+  // A deletion still waiting to reach the server removes nothing yet.
+  const unconfirmed = records.map(item => (item.cloudId === 'tombstone' ? { ...item, confirmed: false } : item));
+  assert.deepEqual(S.supersededContent(unconfirmed), []);
+});
+
 // Exercise the actual app storage and draft functions in a small host, keeping
 // browser rendering for the separate visual/manual checks.
 function host(initial = {}, failWrites = false) {

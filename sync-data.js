@@ -126,6 +126,22 @@ const MigraineSyncData = (() => {
     return hasDiary(state) ? 'ask' : 'switch';
   }
 
-  return { entryTime, isEntryChange, dedupeEntries, reconcileEntries, hasDiary, signInAction };
+  // Entry contents that a confirmed deletion supersedes. Deletion records stay so devices that
+  // were offline still learn about the deletion; an edit saved after the deletion is kept.
+  function supersededContent(records) {
+    const deletedAt = new Map();
+    for (const record of records) {
+      const time = Date.parse(record.modifiedAt);
+      if (isEntryChange(record) && record.deleted === true && record.confirmed && Number.isFinite(time)) {
+        deletedAt.set(record.id, Math.max(deletedAt.get(record.id) ?? time, time));
+      }
+    }
+    return records
+      .filter(record => isEntryChange(record) && record.deleted !== true && deletedAt.has(record.id)
+        && Date.parse(record.modifiedAt) <= deletedAt.get(record.id))
+      .map(record => record.cloudId);
+  }
+
+  return { entryTime, isEntryChange, dedupeEntries, reconcileEntries, hasDiary, signInAction, supersededContent };
 })();
 if (typeof module !== 'undefined') module.exports = MigraineSyncData;
