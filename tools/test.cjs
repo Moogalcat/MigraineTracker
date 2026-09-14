@@ -232,6 +232,21 @@ test('the notes editor stops at the same length the Firestore rules accept', () 
   assert.match(rules, new RegExp(`isText\\(entry\\.notes, ${D.notesLimit}\\)`));
 });
 
+test('a first settings sync combines custom triggers, and afterwards the newer settings win', () => {
+  const local = { customTriggers: ['Red wine', 'travel'], preferences: { theme: 'dark' } };
+  const cloud = { customTriggers: ['Travel', 'Cheese'], preferences: { theme: 'light' } };
+  // First sync: lists combined whatever the letter case, preferences from the side changed more recently.
+  assert.deepEqual(S.chooseSettings(local, 200, cloud, 100, true),
+    { customTriggers: ['Travel', 'Cheese', 'Red wine'], preferences: { theme: 'dark' } });
+  assert.deepEqual(S.chooseSettings(local, 100, cloud, 200, true).preferences, { theme: 'light' });
+  // A device that never changed its settings takes the cloud's.
+  const untouched = { customTriggers: [], preferences: { theme: 'system' } };
+  assert.deepEqual(S.chooseSettings(untouched, 0, cloud, 0, true), cloud);
+  // After the first sync the newer side replaces the other, so removals sync too.
+  assert.deepEqual(S.chooseSettings(local, 100, cloud, 200, false), cloud);
+  assert.deepEqual(S.chooseSettings(local, 200, cloud, 100, false), local);
+});
+
 // Exercise the actual app storage and draft functions in a small host, keeping
 // browser rendering for the separate visual/manual checks.
 function host(initial = {}, failWrites = false) {

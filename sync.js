@@ -50,14 +50,17 @@ function loadSyncMeta() {
   try {
     const value = JSON.parse(localStorage.getItem(SYNC_META_KEY) || '{}');
     const tombstones = value && typeof value.tombstones === 'object' ? value.tombstones : {};
+    const settingsModifiedAt = Number.isFinite(value.settingsModifiedAt) ? value.settingsModifiedAt : 0;
     return {
       deviceId: typeof value.deviceId === 'string' && value.deviceId ? value.deviceId : LogData.uid(),
       accountUid: typeof value.accountUid === 'string' && value.accountUid ? value.accountUid : null,
-      settingsModifiedAt: Number.isFinite(value.settingsModifiedAt) ? value.settingsModifiedAt : 0,
+      settingsModifiedAt,
+      // Before this flag existed, settings were only dated while signed in, so a date means they had synced.
+      settingsSynced: typeof value.settingsSynced === 'boolean' ? value.settingsSynced : settingsModifiedAt > 0,
       tombstones: Object.fromEntries(Object.entries(tombstones).filter(([, time]) => Number.isFinite(time))),
     };
   } catch {
-    return { deviceId: LogData.uid(), accountUid: null, settingsModifiedAt: 0, tombstones: {} };
+    return { deviceId: LogData.uid(), accountUid: null, settingsModifiedAt: 0, settingsSynced: false, tombstones: {} };
   }
 }
 
@@ -70,7 +73,7 @@ saveSyncMeta();
 
 // Another account starts clean, so no deletion markers or settings time carry over from the last one.
 function resetSyncMeta(accountUid) {
-  syncMeta = { deviceId: syncMeta.deviceId, accountUid, settingsModifiedAt: 0, tombstones: {} };
+  syncMeta = { deviceId: syncMeta.deviceId, accountUid, settingsModifiedAt: 0, settingsSynced: false, tombstones: {} };
   saveSyncMeta();
 }
 
@@ -144,7 +147,14 @@ function appendChanges(records) {
 
 function localChanges(previous, current) {
   baseline = clone(current);
-  if (!activeUser || !previous) return;
+  if (!previous) return;
+  const settingsChanged = !sameSettings(previous, current);
+  // Dated even while signed out, so a newer change made before signing in is not lost to an older cloud copy.
+  if (settingsChanged) {
+    syncMeta.settingsModifiedAt = Date.now();
+    saveSyncMeta();
+  }
+  if (!activeUser) return;
   const before = new Map(previous.entries.map(entry => [entry.id, entry]));
   const after = new Map(current.entries.map(entry => [entry.id, entry]));
   const records = [];
@@ -166,10 +176,7 @@ function localChanges(previous, current) {
       records.push(deletionRecord(id, now));
     }
   }
-  if (!sameSettings(previous, current)) {
-    syncMeta.settingsModifiedAt = now;
-    records.push(settingsRecord(current, now));
-  }
+  if (settingsChanged) records.push(settingsRecord(current, syncMeta.settingsModifiedAt));
   saveSyncMeta();
   appendChanges(records);
 }
@@ -221,18 +228,25 @@ async function applySnapshot(snapshot) {
 
   if (remoteSettings && validCloudSettings(remoteSettings)) {
     const remoteTime = Date.parse(remoteSettings.modifiedAt);
-    if (remoteTime >= syncMeta.settingsModifiedAt) {
-      if (!sameSettings(next, remoteSettings)) {
-        next = { ...next, customTriggers: [...remoteSettings.customTriggers],
-          preferences: { ...remoteSettings.preferences } };
-        reconciled.changed = true;
-      }
+    const chosen = MigraineSyncData.chooseSettings(next, syncMeta.settingsModifiedAt, remoteSettings, remoteTime,
+      !syncMeta.settingsSynced);
+    if (!sameSettings(next, chosen)) {
+      next = { ...next, ...chosen };
+      reconciled.changed = true;
+    }
+    if (sameSettings(chosen, remoteSettings)) {
       syncMeta.settingsModifiedAt = remoteTime;
+      if (!snapshot.metadata.fromCache) syncMeta.settingsSynced = true;
     } else if (!snapshot.metadata.fromCache) {
+      // This device's settings are newer, or a first sync combined both lists: send them, dated after the cloud copy.
+      syncMeta.settingsModifiedAt = Math.max(syncMeta.settingsModifiedAt, remoteTime + 1);
+      syncMeta.settingsSynced = true;
       uploads.push(settingsRecord(next, syncMeta.settingsModifiedAt));
     }
   } else if (!remoteSettings && !snapshot.metadata.fromCache) {
-    syncMeta.settingsModifiedAt = Date.now();
+    // The account has no settings yet. A device that never changed its own sends them dated 0, so they never
+    // override a choice made on another device.
+    syncMeta.settingsSynced = true;
     uploads.push(settingsRecord(next, syncMeta.settingsModifiedAt));
   }
 

@@ -157,6 +157,29 @@ const MigraineSyncData = (() => {
       || (record.entry.notes.length <= LogData.notesLimit && record.entry.triggers.length <= 200);
   }
 
-  return { entryTime, isEntryChange, dedupeEntries, reconcileEntries, hasDiary, signInAction, supersededContent, fitsCloud };
+  // Custom trigger labels once each, ignoring letter case; the first spelling seen is kept.
+  function uniqueLabels(labels) {
+    const seen = new Set();
+    return labels.filter(label => {
+      const key = label.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  // Settings to keep when the cloud copy arrives: the side changed more recently wins, and a tie goes to the cloud.
+  // The first time a device syncs settings with an account the custom trigger lists are combined instead, so
+  // triggers added on either side before they first met both survive.
+  function chooseSettings(local, localTime, cloud, cloudTime, firstSync) {
+    const newer = cloudTime >= localTime ? cloud : local;
+    return {
+      customTriggers: firstSync ? uniqueLabels([...cloud.customTriggers, ...local.customTriggers]) : [...newer.customTriggers],
+      preferences: { ...newer.preferences },
+    };
+  }
+
+  return { entryTime, isEntryChange, dedupeEntries, reconcileEntries, hasDiary, signInAction, supersededContent, fitsCloud,
+    chooseSettings };
 })();
 if (typeof module !== 'undefined') module.exports = MigraineSyncData;

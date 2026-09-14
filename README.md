@@ -171,7 +171,9 @@ the same Google account on every device. Existing entries upload on the first
 successful connection. Later edits and deletions are appended individually, so
 independent offline changes from different devices can be merged safely. The
 latest modification of the same entry wins. Appearance and custom-trigger changes
-use their latest modification time.
+use their latest modification time, including changes made while signed out. The
+first time a device syncs with an account, its custom triggers are combined with
+the account's, so triggers added on either side are kept.
 
 A device's diary stays with the Google account it first synced with. Signing in
 with a different account asks first: OK removes this device's diary, custom
