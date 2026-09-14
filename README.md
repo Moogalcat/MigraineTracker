@@ -61,22 +61,35 @@ service workers need `http://localhost` or HTTPS.
 Service workers require HTTPS, so the app needs hosting. There is no build
 step, so any static host works — point it at the repo root.
 
-This public repo deploys from the root of `main` with **GitHub Pages** at
-<https://moogalcat.github.io/MigraineTracker/>. Every push to `main` starts a
-new Pages deployment.
+This public repo has two live deployments from the root of `main`. Every push
+to `main` starts a deployment on both hosts:
+
+- **Cloudflare Pages (primary):** <https://migrainetracker.pages.dev/>
+- **GitHub Pages (mirror):** <https://moogalcat.github.io/MigraineTracker/>
+
+Use the Cloudflare Pages address for the diary unless you are deliberately
+testing the mirror. The two addresses are different browser origins, so each
+keeps its own local diary, drafts, preferences, installed service worker and
+sync-device state. Opening the mirror does not expose the local records stored
+by the primary address. Signed-in records can still converge through Firebase,
+but local-only data does not move between the addresses; export and import a
+backup if you need to move it.
 
 Search engines are asked to stay away three times over, so it works whichever
 host you use: a `noindex` meta tag in `index.html` and `robots.txt`. The `_headers`
-file provides another `X-Robots-Tag` header only on hosts that support that file;
-GitHub Pages ignores it.
+file provides another `X-Robots-Tag` header on Cloudflare Pages; GitHub Pages
+ignores `_headers`.
 
 The same file sets a Content-Security-Policy with `frame-ancestors 'none'` and
-`X-Frame-Options: DENY` for hosts that honour it. GitHub Pages does not, so
+`X-Frame-Options: DENY` on Cloudflare Pages. GitHub Pages ignores `_headers`, so
 `index.html` repeats the policy in a meta tag (scripts and connections only from
 this site and Google's Firebase hosts), and `app.js` refuses to run inside another
 site's frame, because a meta tag cannot forbid framing. If Google sign-in ever
 needs another host, add it to both the meta tag and `_headers`; a unit test checks
-that they match.
+that they match. Cloudflare Web Analytics is intentionally outside this policy,
+so an enabled analytics beacon is blocked and may log a console warning. Disable
+Web Analytics in Cloudflare if the warning is unwanted; do not loosen the policy
+just for the beacon.
 
 None of that is access control — **anyone with the URL can open the app**. It
 only keeps it out of search results. Without sync, diary data stays in the
@@ -185,9 +198,11 @@ the account's, so triggers added on either side are kept.
 
 Cloud records from earlier sync versions (before `generation` 4) are ignored. Once
 per device, the app removes their copies of entries that device already has or has
-deleted, or holds an exact copy of under another ID, and leaves copies of any other
+deleted, or holds an exact copy under another ID, and leaves copies of any other
 entry in place, with a message saying how many. Uploads and deletes go to the cloud
-10 at a time, because Firestore applies its security rules limits per request.
+10 at a time, because Firestore applies its security rules limits per request. The
+generation-4 cleanup and ten-write batching have been verified on the primary
+Cloudflare deployment against the production Firestore project.
 
 A device's diary stays with the Google account it first synced with. Signing in
 with a different account asks first: OK removes this device's diary, custom
@@ -207,8 +222,10 @@ To connect Firebase:
 1. Create a project at <https://console.firebase.google.com>, register a Web app,
    and leave Google Analytics disabled unless you specifically want it.
 2. Create a Cloud Firestore database in production mode.
-3. Under **Authentication → Sign-in method**, enable Google. Add the deployed
-   site's hostname under **Authentication → Settings → Authorized domains**.
+3. Under **Authentication → Sign-in method**, enable Google. Under
+   **Authentication → Settings → Authorized domains**, add every hostname from
+   which people will sign in. For the live deployments above, that means
+   `migrainetracker.pages.dev` and `moogalcat.github.io`.
 4. Copy the Web app's `firebaseConfig` object into `firebase-config.js`, replacing
    `null`. These browser identifiers are public configuration; never add a service
    account key or other private credential to the repository.
