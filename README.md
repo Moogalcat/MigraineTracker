@@ -179,6 +179,13 @@ triggers and drafts, then loads that account's diary (export a backup first if
 you need changes made while signed out); Cancel signs out without uploading
 anything. A device with no entries or custom triggers switches without asking.
 
+Only Google accounts on the allowlist can sync (see step 5 below). Anyone else who
+signs in is signed straight back out, and the diary on that device is left as it
+was. Notes can sync up to 50,000 characters, and the editor stops there; an older
+entry with a longer note stays on the device, with a message, until it is shortened.
+If Firebase refuses a change anyway, sync pauses on that device, with a message, so
+it never retries in a loop; changes stay local until you sign in again or reload.
+
 To connect Firebase:
 
 1. Create a project at <https://console.firebase.google.com>, register a Web app,
@@ -189,12 +196,19 @@ To connect Firebase:
 4. Copy the Web app's `firebaseConfig` object into `firebase-config.js`, replacing
    `null`. These browser identifiers are public configuration; never add a service
    account key or other private credential to the repository.
-5. In Firestore's **Rules** tab, paste `firestore.rules` and publish it. The rules
-   let a signed-in user read and append only their own change records; updates and
-   deletions of existing records are denied, with one exception: once an entry's
-   deletion reaches the cloud, the app removes that entry's earlier contents and keeps
-   only a small deletion record (the entry ID and time) so other devices remove it
-   too. Deletion and settings records can never be deleted.
+5. Before publishing the rules, create the allowlist: in Firestore, add a document at
+   `config/access` with a field `emails`, an array of the lowercase Google addresses
+   allowed to sync. Nobody can sync until it exists, and you can edit the list in the
+   console later without redeploying.
+6. In Firestore's **Rules** tab, paste `firestore.rules` and publish it, or run
+   `firebase deploy --only firestore:rules`. The rules let an allowed, verified Google
+   account read and append records only inside its own `users/{uid}/changes`
+   collection, only in the shapes the app writes, with notes capped at 50,000
+   characters and lists at 200 items. Existing records cannot be changed. Once an
+   entry's deletion reaches the cloud, the app removes that entry's earlier contents
+   and keeps only a small deletion record (the entry ID and time) so other devices
+   remove it too; deletion and settings records can never be deleted.
+7. Recommended: set a budget alert for the Google Cloud project.
 
 The local diary continues working offline and uploads its saved state after the
 connection returns. Local drafts remain device-only and are never synced. Continue

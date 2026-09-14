@@ -38,7 +38,7 @@ function friendlyError(error) {
   if (error?.code === 'auth/unauthorized-domain') return 'This site address must be added to Firebase Authentication’s authorized domains.';
   if (error?.code === 'auth/popup-closed-by-user') return 'Sign-in was cancelled.';
   if (error?.code === 'auth/popup-blocked') return 'The browser blocked the sign-in window. Allow pop-ups for this site and try again.';
-  if (error?.code === 'permission-denied') return 'Firebase denied access. Check that the supplied Firestore rules have been deployed.';
+  if (error?.code === 'permission-denied') return 'Firebase denied access. This Google account may not be allowed to sync, or the Firestore rules have not been deployed.';
   return navigator.onLine ? 'Sync could not connect. Try again in a moment.' : 'You are offline. Changes will sync after reconnecting.';
 }
 
@@ -105,19 +105,40 @@ function newest(records, key) {
   return [...latest.values()];
 }
 
+// Once the rules refuse a write, this session sends nothing more. Skipping only the refused records is not
+// enough: the SDK rolls a refused write back into a new snapshot, and records such as settings carry a fresh
+// time, so the same refusal would repeat in a tight loop. Signing in again or reloading tries once more.
+let refusalMessage = '';
+
+// Something keeping changes off the cloud, shown until it is resolved.
+function syncProblem() {
+  if (refusalMessage) return refusalMessage;
+  const tooLarge = syncBridge.getState().entries.filter(entry => !MigraineSyncData.fitsCloud(entryRecord(entry))).length;
+  if (!tooLarge) return '';
+  return `${tooLarge} ${tooLarge === 1 ? 'entry is' : 'entries are'} too large to sync (notes over `
+    + `${LogData.notesLimit.toLocaleString('en-US')} characters or more than 200 triggers) and `
+    + `${tooLarge === 1 ? 'stays' : 'stay'} on this device until shortened.`;
+}
+
 function appendChanges(records) {
-  if (!activeUser || !records.length) return;
+  if (!activeUser || !records.length || refusalMessage) return;
+  const sendable = records.filter(record => MigraineSyncData.fitsCloud(record));
+  if (sendable.length < records.length) showSyncResult(syncProblem(), true);
+  if (!sendable.length) return;
   const changes = firebaseApi.collection(db, 'users', activeUser.uid, 'changes');
   setSyncStatus(navigator.onLine ? 'Syncing' : 'Offline');
   const batch = firebaseApi.writeBatch(db);
-  for (const record of records) {
+  for (const record of sendable) {
     batch.set(firebaseApi.doc(changes), { ...record, generation: CHANGE_GENERATION,
       deviceId: syncMeta.deviceId });
   }
   batch.commit().catch((error) => {
     console.error('Cloud write failed', error);
-    setSyncStatus(navigator.onLine ? 'Error' : 'Offline');
-    showSyncResult(friendlyError(error), true);
+    if (error?.code === 'permission-denied') {
+      refusalMessage = `${friendlyError(error)} Changes stay on this device until you sign in again or reload the app.`;
+    }
+    setSyncStatus(refusalMessage ? 'Paused' : navigator.onLine ? 'Error' : 'Offline');
+    showSyncResult(refusalMessage || friendlyError(error), true);
   });
 }
 
@@ -228,13 +249,17 @@ async function applySnapshot(snapshot) {
     appendChanges(uploads);
     removeSupersededContent(records);
   }
-  if (reconciled.invalid) showSyncResult(`${reconciled.invalid} unreadable cloud record${reconciled.invalid === 1 ? '' : 's'} were ignored.`, true);
+  if (refusalMessage) showSyncResult(refusalMessage, true);
+  else if (reconciled.invalid) showSyncResult(`${reconciled.invalid} unreadable cloud record${reconciled.invalid === 1 ? '' : 's'} were ignored.`, true);
+  else if (syncProblem()) showSyncResult(syncProblem(), true);
   else if (!snapshot.metadata.hasPendingWrites) showSyncResult('');
-  setSyncStatus(snapshot.metadata.hasPendingWrites ? (navigator.onLine ? 'Syncing' : 'Offline')
-    : snapshot.metadata.fromCache && !navigator.onLine ? 'Offline' : 'Synced');
+  setSyncStatus(refusalMessage ? 'Paused'
+    : snapshot.metadata.hasPendingWrites ? (navigator.onLine ? 'Syncing' : 'Offline')
+      : snapshot.metadata.fromCache && !navigator.onLine ? 'Offline' : 'Synced');
 }
 
 let signOutNotice;
+let watchAttempt = 0;
 
 // Returns whether this account may sync with the diary on this device. The device may be shared, so a
 // diary linked to another account is never uploaded into this one.
@@ -264,9 +289,30 @@ function claimDiary(user) {
   return true;
 }
 
-function watchUser(user) {
+// Signing in does not grant sync: the rules only admit allowed accounts. Checked before the diary is touched.
+async function mayAccess(user) {
+  if (!navigator.onLine) return true;
+  try {
+    await firebaseApi.getDocs(firebaseApi.query(firebaseApi.collection(db, 'users', user.uid, 'changes'),
+      firebaseApi.limit(1)));
+    return true;
+  } catch (error) {
+    return error?.code !== 'permission-denied';
+  }
+}
+
+async function watchUser(user) {
+  const attempt = ++watchAttempt;
   if (stopChanges) { stopChanges(); stopChanges = undefined; }
   activeUser = undefined;
+  if (user) setSyncStatus(navigator.onLine ? 'Connecting' : 'Offline');
+  const allowed = !user || await mayAccess(user);
+  if (attempt !== watchAttempt) return;
+  if (!allowed) {
+    signOutNotice = { message: 'Signed out. This Google account is not allowed to sync.', isError: true };
+    firebaseApi.signOut(auth).catch((error) => showSyncResult(friendlyError(error), true));
+    return;
+  }
   if (user && !claimDiary(user)) {
     firebaseApi.signOut(auth).catch((error) => showSyncResult(friendlyError(error), true));
     return;
@@ -283,6 +329,8 @@ function watchUser(user) {
     signOutNotice = undefined;
     return;
   }
+  // Signing in again tries once more after an earlier refusal.
+  refusalMessage = '';
   setSyncStatus(navigator.onLine ? 'Connecting' : 'Offline');
   const changes = firebaseApi.query(
     firebaseApi.collection(db, 'users', user.uid, 'changes'),
@@ -331,7 +379,11 @@ async function startSync() {
     catch (error) { showSyncResult(friendlyError(error), true); }
     finally { syncSignOut.disabled = false; }
   });
-  authApi.onAuthStateChanged(auth, watchUser, (error) => {
+  authApi.onAuthStateChanged(auth, (user) => watchUser(user).catch((error) => {
+    console.error('Sync could not start', error);
+    setSyncStatus('Error');
+    showSyncResult(friendlyError(error), true);
+  }), (error) => {
     setSyncStatus('Error'); showSyncResult(friendlyError(error), true);
   });
   syncDescription.textContent = 'Sign in with the same Google account on each device to keep saved entries in sync. Logging continues to work offline.';

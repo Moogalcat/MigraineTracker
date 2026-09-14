@@ -193,6 +193,24 @@ test('sync removes entry contents once a confirmed deletion supersedes them', ()
   assert.deepEqual(S.supersededContent(unconfirmed), []);
 });
 
+test('records beyond the size caps in the Firestore rules are kept off the upload list', () => {
+  const upload = overrides => S.reconcileEntries(state([row(overrides)]), []).uploads[0];
+  const many = count => Array.from({ length: count }, (_, i) => `Trigger ${i}`);
+  assert.equal(D.notesLimit, 50000);
+  assert.equal(S.fitsCloud(upload({ notes: 'x'.repeat(D.notesLimit), triggers: many(200) })), true);
+  assert.equal(S.fitsCloud(upload({ notes: 'x'.repeat(D.notesLimit + 1) })), false);
+  assert.equal(S.fitsCloud(upload({ triggers: many(201) })), false);
+  assert.equal(S.fitsCloud({ kind: 'entry', id: 'gone', deleted: true, modifiedAt: at }), true);
+  assert.equal(S.fitsCloud({ kind: 'settings', modifiedAt: at, customTriggers: many(201), preferences: { theme: 'system' } }), false);
+});
+
+test('the notes editor stops at the same length the Firestore rules accept', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  assert.match(html, new RegExp(`<textarea data-field="notes"[^>]*maxlength="${D.notesLimit}"`));
+  const rules = fs.readFileSync(path.join(__dirname, '../firestore.rules'), 'utf8');
+  assert.match(rules, new RegExp(`isText\\(entry\\.notes, ${D.notesLimit}\\)`));
+});
+
 // Exercise the actual app storage and draft functions in a small host, keeping
 // browser rendering for the separate visual/manual checks.
 function host(initial = {}, failWrites = false) {

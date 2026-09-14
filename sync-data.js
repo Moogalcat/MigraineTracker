@@ -142,6 +142,13 @@ const MigraineSyncData = (() => {
       .map(record => record.cloudId);
   }
 
-  return { entryTime, isEntryChange, dedupeEntries, reconcileEntries, hasDiary, signInAction, supersededContent };
+  // Mirrors the size caps in firestore.rules, so the app never sends a record the rules would refuse.
+  function fitsCloud(record) {
+    if (record.kind === 'settings') return record.customTriggers.length <= 200;
+    return record.deleted === true
+      || (record.entry.notes.length <= LogData.notesLimit && record.entry.triggers.length <= 200);
+  }
+
+  return { entryTime, isEntryChange, dedupeEntries, reconcileEntries, hasDiary, signInAction, supersededContent, fitsCloud };
 })();
 if (typeof module !== 'undefined') module.exports = MigraineSyncData;

@@ -99,6 +99,8 @@ const LogData = (() => {
     return entries.filter(e => Date.parse(e.at) >= start.getTime() && Date.parse(e.at) < end.getTime()
       && Date.parse(e.at) <= now.getTime()).sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   }
-  return { ratings, themes, uid, valid, normalise, contentKey, empty, parse, merge, fromInput, toInput, reportEntries };
+  // The longest note cloud sync accepts. firestore.rules and the notes editor's maxlength use the same number.
+  const notesLimit = 50000;
+  return { ratings, themes, notesLimit, uid, valid, normalise, contentKey, empty, parse, merge, fromInput, toInput, reportEntries };
 })();
 if (typeof module !== 'undefined') module.exports = LogData;
