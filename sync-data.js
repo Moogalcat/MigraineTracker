@@ -179,7 +179,23 @@ const MigraineSyncData = (() => {
     };
   }
 
+  // Old copies from sync versions before `generation` that can be removed: records holding the contents of an entry
+  // this device has or has deleted, whose current record lives in the current generation. Copies of entries the
+  // device has never seen are only counted, never removed, so nothing that exists only in the cloud is lost.
+  function legacyCopies(records, state, generation) {
+    const known = new Set([...state.entries.map(entry => entry.id), ...state.deletedIds]);
+    const remove = [];
+    const unknown = new Set();
+    for (const record of records) {
+      if (record.generation === generation || record.deleted === true || record.entry == null
+        || typeof record.id !== 'string' || !record.id) continue;
+      if (known.has(record.id)) remove.push(record.cloudId);
+      else unknown.add(record.id);
+    }
+    return { remove, unknownEntries: unknown.size };
+  }
+
   return { entryTime, isEntryChange, dedupeEntries, reconcileEntries, hasDiary, signInAction, supersededContent, fitsCloud,
-    chooseSettings };
+    chooseSettings, legacyCopies };
 })();
 if (typeof module !== 'undefined') module.exports = MigraineSyncData;

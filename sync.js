@@ -57,10 +57,12 @@ function loadSyncMeta() {
       settingsModifiedAt,
       // Before this flag existed, settings were only dated while signed in, so a date means they had synced.
       settingsSynced: typeof value.settingsSynced === 'boolean' ? value.settingsSynced : settingsModifiedAt > 0,
+      legacyCleaned: value.legacyCleaned === true,
       tombstones: Object.fromEntries(Object.entries(tombstones).filter(([, time]) => Number.isFinite(time))),
     };
   } catch {
-    return { deviceId: LogData.uid(), accountUid: null, settingsModifiedAt: 0, settingsSynced: false, tombstones: {} };
+    return { deviceId: LogData.uid(), accountUid: null, settingsModifiedAt: 0, settingsSynced: false, legacyCleaned: false,
+      tombstones: {} };
   }
 }
 
@@ -73,7 +75,8 @@ saveSyncMeta();
 
 // Another account starts clean, so no deletion markers or settings time carry over from the last one.
 function resetSyncMeta(accountUid) {
-  syncMeta = { deviceId: syncMeta.deviceId, accountUid, settingsModifiedAt: 0, settingsSynced: false, tombstones: {} };
+  syncMeta = { deviceId: syncMeta.deviceId, accountUid, settingsModifiedAt: 0, settingsSynced: false,
+    legacyCleaned: false, tombstones: {} };
   saveSyncMeta();
 }
 
@@ -211,6 +214,39 @@ function removeSupersededContent(records) {
   }
 }
 
+// Records from sync versions before generation 4 are invisible to the app but can still hold old notes. Once per
+// device, remove the copies of entries this device has or has deleted; copies of any other entry stay in place.
+let legacyCheckStarted = false;
+let legacyNotice = '';
+async function removeLegacyCopies() {
+  if (legacyCheckStarted || syncMeta.legacyCleaned || !activeUser || refusalMessage) return;
+  legacyCheckStarted = true;
+  const user = activeUser;
+  const changes = firebaseApi.collection(db, 'users', user.uid, 'changes');
+  try {
+    const snapshot = await firebaseApi.getDocsFromServer(changes);
+    if (activeUser !== user) return;
+    const records = snapshot.docs.map(item => ({ ...item.data(), cloudId: item.id }));
+    const { remove, unknownEntries } = MigraineSyncData.legacyCopies(records, syncBridge.getState(), CHANGE_GENERATION);
+    for (let start = 0; start < remove.length; start += DELETE_BATCH_SIZE) {
+      const batch = firebaseApi.writeBatch(db);
+      for (const cloudId of remove.slice(start, start + DELETE_BATCH_SIZE)) batch.delete(firebaseApi.doc(changes, cloudId));
+      await batch.commit();
+    }
+    if (activeUser !== user) return;
+    syncMeta.legacyCleaned = true;
+    saveSyncMeta();
+    if (unknownEntries) {
+      legacyNotice = `${unknownEntries} ${unknownEntries === 1 ? 'entry' : 'entries'} from an earlier sync version `
+        + `${unknownEntries === 1 ? 'is' : 'are'} not on this device, so ${unknownEntries === 1 ? 'its' : 'their'} old cloud `
+        + `${unknownEntries === 1 ? 'copy was' : 'copies were'} kept.`;
+      if (!syncProblem()) showSyncResult(legacyNotice);
+    }
+  } catch (error) {
+    console.warn('Old cloud records from earlier sync versions could not be removed', error);
+  }
+}
+
 async function applySnapshot(snapshot) {
   if (!activeUser) return;
   const records = snapshot.docs.map(item => ({ ...item.data(), cloudId: item.id,
@@ -267,10 +303,12 @@ async function applySnapshot(snapshot) {
   if (refusalMessage) showSyncResult(refusalMessage, true);
   else if (reconciled.invalid) showSyncResult(`${reconciled.invalid} unreadable cloud record${reconciled.invalid === 1 ? '' : 's'} were ignored.`, true);
   else if (syncProblem()) showSyncResult(syncProblem(), true);
+  else if (legacyNotice) showSyncResult(legacyNotice);
   else if (!snapshot.metadata.hasPendingWrites) showSyncResult('');
   setSyncStatus(refusalMessage ? 'Paused'
     : snapshot.metadata.hasPendingWrites ? (navigator.onLine ? 'Syncing' : 'Offline')
       : snapshot.metadata.fromCache && !navigator.onLine ? 'Offline' : 'Synced');
+  if (!snapshot.metadata.fromCache && !snapshot.metadata.hasPendingWrites) removeLegacyCopies();
 }
 
 let signOutNotice;
@@ -346,6 +384,8 @@ async function watchUser(user) {
   }
   // Signing in again tries once more after an earlier refusal.
   refusalMessage = '';
+  legacyNotice = '';
+  legacyCheckStarted = false;
   setSyncStatus(navigator.onLine ? 'Connecting' : 'Offline');
   const changes = firebaseApi.query(
     firebaseApi.collection(db, 'users', user.uid, 'changes'),

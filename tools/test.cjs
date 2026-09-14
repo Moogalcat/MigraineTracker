@@ -409,6 +409,20 @@ test('the service worker keeps only the app page as its offline copy', async () 
   online = false;
   assert.equal(await navigate(`${scope}robots.txt`), '<title>Migraine Log</title> updated');
 });
+test('old sync records are removed only for entries this device has or has deleted', () => {
+  const current = { ...state([row({ id: 'kept-entry' })]), deletedIds: ['deleted-entry'] };
+  const copy = (cloudId, id, extra = {}) => ({ cloudId, id, deleted: false, modifiedAt: at, entry: row({ id }), ...extra });
+  const records = [
+    copy('first-sync-copy', 'kept-entry'), // written before records had a kind or generation
+    copy('generation-2-copy', 'deleted-entry', { kind: 'entry', generation: 2 }),
+    copy('generation-3-copy', 'only-in-cloud', { kind: 'entry', generation: 3 }),
+    copy('another-old-copy', 'only-in-cloud'),
+    { cloudId: 'old-deletion', kind: 'entry', id: 'kept-entry', deleted: true, modifiedAt: at, generation: 3 },
+    { cloudId: 'old-settings', kind: 'settings', modifiedAt: at, customTriggers: ['Old'], preferences: { theme: 'dark' } },
+    copy('current-copy', 'kept-entry', { kind: 'entry', generation: 4 }),
+  ];
+  assert.deepEqual(S.legacyCopies(records, current, 4), { remove: ['first-sync-copy', 'generation-2-copy'], unknownEntries: 1 });
+});
 test('a damaged backup reminder cannot crash or lock the diary', () => {
   const h = host({ 'migraine-log-meta-v1': '{"lastExportAt":"bad date","pending":-10}' });
   assert.equal(h.run('meta.lastExportAt'), null);

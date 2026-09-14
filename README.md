@@ -183,6 +183,11 @@ use their latest modification time, including changes made while signed out. The
 first time a device syncs with an account, its custom triggers are combined with
 the account's, so triggers added on either side are kept.
 
+Cloud records from earlier sync versions (before `generation` 4) are ignored. Once
+per device, the app removes their copies of entries that device already has or has
+deleted, and leaves copies of any other entry in place, with a message saying how
+many.
+
 A device's diary stays with the Google account it first synced with. Signing in
 with a different account asks first: OK removes this device's diary, custom
 triggers and drafts, then loads that account's diary (export a backup first if
