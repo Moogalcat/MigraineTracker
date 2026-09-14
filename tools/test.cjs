@@ -188,9 +188,30 @@ test('sync removes entry contents once a confirmed deletion supersedes them', ()
     { kind: 'settings', cloudId: 'settings', modifiedAt: '2026-09-13T09:00:00Z', confirmed: true },
   ];
   assert.deepEqual(S.supersededContent(records), ['v1', 'v2', 'legacy-v0']);
-  // A deletion still waiting to reach the server removes nothing yet.
-  const unconfirmed = records.map(item => (item.cloudId === 'tombstone' ? { ...item, confirmed: false } : item));
-  assert.deepEqual(S.supersededContent(unconfirmed), []);
+  // A deletion still waiting to reach the server does not remove the latest copy yet.
+  const unconfirmed = records.filter(item => item.cloudId !== 'restored')
+    .map(item => (item.cloudId === 'tombstone' ? { ...item, confirmed: false } : item));
+  assert.deepEqual(S.supersededContent(unconfirmed), ['v1', 'legacy-v0']);
+});
+
+test('sync removes older copies of an edited entry once a newer record reaches the cloud', () => {
+  const copy = (cloudId, modifiedAt, overrides = {}) => ({ kind: 'entry', id: 'attack-1', cloudId, deleted: false,
+    modifiedAt, confirmed: true, entry: row({ updatedAt: modifiedAt }), ...overrides });
+  const records = [
+    copy('first', '2026-09-13T10:00:00.000Z'),
+    copy('second', '2026-09-13T11:00:00.000Z'),
+    // Saved at the same moment on two devices: every device keeps the same one.
+    copy('twin-a', '2026-09-13T12:00:00.000Z'),
+    copy('twin-b', '2026-09-13T12:00:00.000Z'),
+    // Newer copies that are unconfirmed or unreadable never replace a good one.
+    copy('pending', '2026-09-13T13:00:00.000Z', { confirmed: false }),
+    copy('unreadable', '2026-09-13T14:00:00.000Z', { entry: { at: 'not a date' } }),
+    copy('other-entry', '2026-09-13T09:00:00.000Z', { id: 'other', entry: row({ id: 'other' }) }),
+    // A deletion outranks a copy saved at the same moment, whatever their cloud IDs.
+    copy('zzz-same-moment', '2026-09-13T15:00:00.000Z', { id: 'gone', entry: row({ id: 'gone' }) }),
+    { kind: 'entry', id: 'gone', cloudId: 'aaa-deletion', deleted: true, modifiedAt: '2026-09-13T15:00:00.000Z', confirmed: true },
+  ];
+  assert.deepEqual(S.supersededContent(records), ['first', 'second', 'twin-a', 'zzz-same-moment']);
 });
 
 test('records beyond the size caps in the Firestore rules are kept off the upload list', () => {

@@ -207,7 +207,9 @@ To connect Firebase:
    characters and lists at 200 items. Existing records cannot be changed. Once an
    entry's deletion reaches the cloud, the app removes that entry's earlier contents
    and keeps only a small deletion record (the entry ID and time) so other devices
-   remove it too; deletion and settings records can never be deleted.
+   remove it too. Older copies of an edited entry are removed the same way once a newer
+   copy reaches the cloud, so it keeps one copy of each entry. Deletion and settings
+   records can never be deleted.
 7. Recommended: set a budget alert for the Google Cloud project.
 
 The local diary continues working offline and uploads its saved state after the

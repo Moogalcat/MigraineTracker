@@ -188,8 +188,9 @@ function validCloudSettings(record) {
 const DELETE_BATCH_SIZE = 400;
 const removalRequested = new Set();
 
-// A deleted entry keeps only its content-free deletion record in the cloud. Each record is tried once per
-// session, so rules that refuse the delete cannot start a retry loop; a refusal is only logged.
+// The cloud keeps only each entry's newest record: older copies go once a newer copy reaches the server, and a
+// deleted entry keeps just its content-free deletion record. Each record is tried once per session, so rules
+// that refuse the delete cannot start a retry loop; a refusal is only logged.
 function removeSupersededContent(records) {
   const cloudIds = MigraineSyncData.supersededContent(records).filter(id => !removalRequested.has(id));
   const changes = firebaseApi.collection(db, 'users', activeUser.uid, 'changes');

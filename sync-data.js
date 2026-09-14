@@ -126,19 +126,27 @@ const MigraineSyncData = (() => {
     return hasDiary(state) ? 'ask' : 'switch';
   }
 
-  // Entry contents that a confirmed deletion supersedes. Deletion records stay so devices that
-  // were offline still learn about the deletion; an edit saved after the deletion is kept.
+  // Cloud copies of entries that a newer confirmed, readable record replaces: older copies once a newer copy or a
+  // deletion has reached the server. Only entry contents are listed, since the rules keep deletion and settings
+  // records, so each entry's newest record stays for devices that were offline. A deletion outranks a copy saved
+  // at the same moment, matching reconcileEntries; otherwise the larger cloud ID wins, so every device agrees.
   function supersededContent(records) {
-    const deletedAt = new Map();
-    for (const record of records) {
-      const time = Date.parse(record.modifiedAt);
-      if (isEntryChange(record) && record.deleted === true && record.confirmed && Number.isFinite(time)) {
-        deletedAt.set(record.id, Math.max(deletedAt.get(record.id) ?? time, time));
+    const time = record => Date.parse(record.modifiedAt);
+    const readable = record => record.deleted === true
+      || (LogData.valid(record.entry) && String(record.entry.id || '') === record.id);
+    const outranks = (a, b) => (time(a) !== time(b) ? time(a) > time(b)
+      : (a.deleted === true) !== (b.deleted === true) ? a.deleted === true
+        : String(a.cloudId) > String(b.cloudId));
+    const changes = records.filter(record => isEntryChange(record) && typeof record.id === 'string' && record.id
+      && Number.isFinite(time(record)));
+    const newest = new Map();
+    for (const record of changes) {
+      if (record.confirmed && readable(record) && (!newest.has(record.id) || outranks(record, newest.get(record.id)))) {
+        newest.set(record.id, record);
       }
     }
-    return records
-      .filter(record => isEntryChange(record) && record.deleted !== true && deletedAt.has(record.id)
-        && Date.parse(record.modifiedAt) <= deletedAt.get(record.id))
+    return changes
+      .filter(record => record.deleted !== true && newest.has(record.id) && outranks(newest.get(record.id), record))
       .map(record => record.cloudId);
   }
 
