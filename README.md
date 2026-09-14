@@ -70,6 +70,14 @@ host you use: a `noindex` meta tag in `index.html` and `robots.txt`. The `_heade
 file provides another `X-Robots-Tag` header only on hosts that support that file;
 GitHub Pages ignores it.
 
+The same file sets a Content-Security-Policy with `frame-ancestors 'none'` and
+`X-Frame-Options: DENY` for hosts that honour it. GitHub Pages does not, so
+`index.html` repeats the policy in a meta tag (scripts and connections only from
+this site and Google's Firebase hosts), and `app.js` refuses to run inside another
+site's frame, because a meta tag cannot forbid framing. If Google sign-in ever
+needs another host, add it to both the meta tag and `_headers`; a unit test checks
+that they match.
+
 None of that is access control — **anyone with the URL can open the app**. It
 only keeps it out of search results. Without sync, diary data stays in the
 browser. After Google sign-in, saved entries are stored in Cloud Firestore and

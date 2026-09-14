@@ -1,7 +1,15 @@
 # Keep the site out of search engines. This is not access control - anyone with
 # the URL can still open it - it just stops it being indexed and found.
+#
+# The security headers below only apply on hosts that honour this file. GitHub
+# Pages ignores it, so index.html repeats the same Content-Security-Policy in a
+# meta tag, and app.js refuses to run inside a frame, because frame-ancestors
+# cannot be set from a meta tag. Keep the two policies identical; a test checks.
 /*
   X-Robots-Tag: noindex, nofollow
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://www.gstatic.com https://apis.google.com; style-src 'self'; img-src 'self'; connect-src 'self' https://www.gstatic.com https://*.googleapis.com; frame-src https://migrainetracker-8a802.firebaseapp.com; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 
 # The service worker must never be served from a stale cache, or installed
 # copies will not notice a new version.

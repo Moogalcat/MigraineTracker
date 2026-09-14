@@ -1,6 +1,12 @@
 /* Migraine Log — all data stays in this browser's localStorage. */
 'use strict';
 
+// GitHub Pages cannot send frame-ancestors, so the app refuses to run inside another site's frame.
+if (window.top !== window.self) {
+  document.body.textContent = 'Migraine Log only works when opened directly, not inside another site.';
+  throw new Error('Migraine Log will not run inside a frame.');
+}
+
 if (window.navigator && window.navigator.standalone === true && document.documentElement) {
   document.documentElement.classList.add('standalone');
 }

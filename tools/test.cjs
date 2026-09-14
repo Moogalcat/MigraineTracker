@@ -360,6 +360,24 @@ test('a successful export clears the error an earlier export left, but not other
   exportBackup();
   assert.equal(appError.hidden, false);
 });
+test('the app refuses to run inside a frame on another site', () => {
+  const source = fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8');
+  const body = { textContent: 'Migraine Log' };
+  const framed = vm.createContext({ window: { top: {}, self: {} }, document: { body } });
+  assert.throws(() => vm.runInContext(source, framed), /inside a frame/);
+  assert.match(body.textContent, /opened directly/);
+});
+test('the content security policy matches in index.html and _headers, and only the header forbids framing', () => {
+  const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+  const policy = read('index.html').match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/)?.[1];
+  assert.ok(policy, 'index.html carries the policy in a meta tag');
+  const authDomain = read('firebase-config.js').match(/authDomain: '([^']+)'/)[1];
+  assert.ok(policy.includes(`frame-src https://${authDomain};`), 'sign-in frames are allowed from the configured auth domain');
+  assert.ok(!policy.includes('frame-ancestors'), 'browsers ignore frame-ancestors in a meta tag');
+  const headers = read('_headers');
+  assert.ok(headers.includes(`Content-Security-Policy: ${policy}; frame-ancestors 'none'`), '_headers repeats the policy');
+  assert.match(headers, /X-Frame-Options: DENY/);
+});
 test('a damaged backup reminder cannot crash or lock the diary', () => {
   const h = host({ 'migraine-log-meta-v1': '{"lastExportAt":"bad date","pending":-10}' });
   assert.equal(h.run('meta.lastExportAt'), null);
