@@ -114,6 +114,18 @@ const MigraineSyncData = (() => {
     };
   }
 
-  return { entryTime, isEntryChange, dedupeEntries, reconcileEntries };
+  function hasDiary(state) {
+    return state.entries.length > 0 || state.customTriggers.length > 0;
+  }
+
+  // How signing in treats this device's diary. The device may be shared, so a diary already linked to
+  // another account is never added to this one without asking.
+  function signInAction(linkedUid, uid, state) {
+    if (linkedUid === uid) return 'sync';
+    if (!linkedUid) return 'link';
+    return hasDiary(state) ? 'ask' : 'switch';
+  }
+
+  return { entryTime, isEntryChange, dedupeEntries, reconcileEntries, hasDiary, signInAction };
 })();
 if (typeof module !== 'undefined') module.exports = MigraineSyncData;

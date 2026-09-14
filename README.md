@@ -172,6 +172,12 @@ independent offline changes from different devices can be merged safely. The
 latest modification of the same entry wins. Appearance and custom-trigger changes
 use their latest modification time.
 
+A device's diary stays with the Google account it first synced with. Signing in
+with a different account asks first: OK removes this device's diary, custom
+triggers and drafts, then loads that account's diary (export a backup first if
+you need changes made while signed out); Cancel signs out without uploading
+anything. A device with no entries or custom triggers switches without asking.
+
 To connect Firebase:
 
 1. Create a project at <https://console.firebase.google.com>, register a Web app,

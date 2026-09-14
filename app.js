@@ -1017,6 +1017,17 @@ render();
 
 window.MigraineAppSync = Object.freeze({
   getState() { return JSON.parse(JSON.stringify(state)); },
+  // Empties this device's diary, drafts included, before it loads a different account's diary.
+  clearDiary() {
+    if (!persistState(LogData.empty(), false, true)) return false;
+    for (const id of [...drafts.keys()]) clearDraft(id);
+    const nextMeta = { lastExportAt: null, pending: 0 };
+    if (writeJSON(META_KEY, nextMeta)) meta = nextMeta;
+    freshEntryIds.clear();
+    visibleCount = INITIAL_VISIBLE;
+    applyTheme(); render();
+    return true;
+  },
   applyState(value) {
     try {
       const incoming = LogData.parse(value, true);

@@ -165,6 +165,16 @@ test('sync reconciliation propagates deletions without erasing a newer edit', ()
   assert.equal(retained.uploads[0].kind, 'entry');
 });
 
+test('signing in keeps a diary with the Google account it synced with', () => {
+  const withEntry = state([row()]);
+  assert.equal(S.signInAction('alice', 'alice', withEntry), 'sync');
+  assert.equal(S.signInAction(null, 'alice', withEntry), 'link');
+  assert.equal(S.signInAction('alice', 'bob', withEntry), 'ask');
+  assert.equal(S.signInAction('alice', 'bob', { ...state(), customTriggers: ['Travel'] }), 'ask');
+  // Deletion markers alone are not a diary to protect, but they must not follow the device to another account.
+  assert.equal(S.signInAction('alice', 'bob', { ...state(), deletedIds: ['old'] }), 'switch');
+});
+
 // Exercise the actual app storage and draft functions in a small host, keeping
 // browser rendering for the separate visual/manual checks.
 function host(initial = {}, failWrites = false) {

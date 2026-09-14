@@ -52,11 +52,12 @@ function loadSyncMeta() {
     const tombstones = value && typeof value.tombstones === 'object' ? value.tombstones : {};
     return {
       deviceId: typeof value.deviceId === 'string' && value.deviceId ? value.deviceId : LogData.uid(),
+      accountUid: typeof value.accountUid === 'string' && value.accountUid ? value.accountUid : null,
       settingsModifiedAt: Number.isFinite(value.settingsModifiedAt) ? value.settingsModifiedAt : 0,
       tombstones: Object.fromEntries(Object.entries(tombstones).filter(([, time]) => Number.isFinite(time))),
     };
   } catch {
-    return { deviceId: LogData.uid(), settingsModifiedAt: 0, tombstones: {} };
+    return { deviceId: LogData.uid(), accountUid: null, settingsModifiedAt: 0, tombstones: {} };
   }
 }
 
@@ -66,6 +67,12 @@ function saveSyncMeta() {
   catch (error) { console.warn('Could not save sync metadata', error); }
 }
 saveSyncMeta();
+
+// Another account starts clean, so no deletion markers or settings time carry over from the last one.
+function resetSyncMeta(accountUid) {
+  syncMeta = { deviceId: syncMeta.deviceId, accountUid, settingsModifiedAt: 0, tombstones: {} };
+  saveSyncMeta();
+}
 
 function entryRecord(entry) {
   return { kind: 'entry', id: entry.id, deleted: false,
@@ -205,8 +212,43 @@ async function applySnapshot(snapshot) {
     : snapshot.metadata.fromCache && !navigator.onLine ? 'Offline' : 'Synced');
 }
 
+let signOutNotice;
+
+// Returns whether this account may sync with the diary on this device. The device may be shared, so a
+// diary linked to another account is never uploaded into this one.
+function claimDiary(user) {
+  const current = syncBridge.getState();
+  const action = MigraineSyncData.signInAction(syncMeta.accountUid, user.uid, current);
+  if (action === 'sync') return true;
+  if (action === 'link') {
+    syncMeta.accountUid = user.uid;
+    saveSyncMeta();
+    return true;
+  }
+  if (action === 'ask' && !window.confirm('This device has a diary from a different Google account.\n\n'
+    + `Remove it from this device and load the diary for ${user.email || 'this account'} instead? `
+    + 'Changes made while signed out exist only on this device, so export a backup first if you need them.\n\n'
+    + 'Choose Cancel to sign out and keep it.')) {
+    signOutNotice = { message: 'Signed out. This device’s diary was not added to that account. To move it there, export a backup, sign in again and choose OK, then import the backup.' };
+    return false;
+  }
+  const cleared = action === 'ask' ? syncBridge.clearDiary()
+    : !current.deletedIds.length || syncBridge.applyState({ ...current, deletedIds: [] });
+  if (!cleared) {
+    signOutNotice = { message: 'Signed out. The diary on this device could not be replaced, so nothing was changed.', isError: true };
+    return false;
+  }
+  resetSyncMeta(user.uid);
+  return true;
+}
+
 function watchUser(user) {
   if (stopChanges) { stopChanges(); stopChanges = undefined; }
+  activeUser = undefined;
+  if (user && !claimDiary(user)) {
+    firebaseApi.signOut(auth).catch((error) => showSyncResult(friendlyError(error), true));
+    return;
+  }
   activeUser = user;
   baseline = syncBridge.getState();
   syncSignIn.hidden = !!user;
@@ -215,7 +257,8 @@ function watchUser(user) {
   syncAccount.textContent = user ? `Signed in as ${user.email || 'Google user'}` : '';
   if (!user) {
     setSyncStatus('Off');
-    showSyncResult('');
+    showSyncResult(signOutNotice?.message || '', !!signOutNotice?.isError);
+    signOutNotice = undefined;
     return;
   }
   setSyncStatus(navigator.onLine ? 'Connecting' : 'Offline');
