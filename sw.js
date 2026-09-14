@@ -1,6 +1,6 @@
 /* Service worker: makes the app load and work with no network at all.
    Bump CACHE when you change any of the files below. */
-const CACHE = 'migraine-log-v54';
+const CACHE = 'migraine-log-v55';
 const FIREBASE_VERSION = '12.18.0';
 
 const SHELL = [
@@ -53,6 +53,14 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// Only the app's own page is the offline copy. Other pages opened directly under the app's address
+// (robots.txt, an icon, the README) must not replace it, or an offline launch would show that file.
+function isAppShell(url) {
+  const scope = new URL(self.registration.scope);
+  const { origin, pathname } = new URL(url);
+  return origin === scope.origin && (pathname === scope.pathname || pathname === `${scope.pathname}index.html`);
+}
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
@@ -70,7 +78,7 @@ self.addEventListener('fetch', (event) => {
       (async () => {
         try {
           const res = await fetch(new Request(req, { cache: 'reload' }));
-          if (res && res.ok) {
+          if (res && res.ok && isAppShell(req.url)) {
             const cache = await caches.open(CACHE);
             await cache.put('index.html', res.clone());
           }

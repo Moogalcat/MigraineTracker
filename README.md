@@ -280,7 +280,9 @@ npx firebase-tools emulators:exec --only firestore --project demo-migraine-log "
 ```
 
 When changing HTML, CSS or JavaScript, bump `CACHE` in `sw.js`. Add new runtime
-files to its `SHELL` list. Navigation is network-first with an offline/error fallback;
+files to its `SHELL` list. Navigation is network-first with an offline/error fallback,
+and only the app's own page (not `robots.txt` or an icon opened directly) refreshes
+the copy used offline;
 other assets are cache-first with a background refresh kept alive by `waitUntil`.
 Cache cleanup is limited to this app's cache prefix.
 

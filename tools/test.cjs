@@ -378,6 +378,37 @@ test('the content security policy matches in index.html and _headers, and only t
   assert.ok(headers.includes(`Content-Security-Policy: ${policy}; frame-ancestors 'none'`), '_headers repeats the policy');
   assert.match(headers, /X-Frame-Options: DENY/);
 });
+test('the service worker keeps only the app page as its offline copy', async () => {
+  const scope = 'https://moogalcat.github.io/MigraineTracker/';
+  const pages = { [scope]: '<title>Migraine Log</title>', [`${scope}robots.txt`]: 'User-agent: *',
+    [`${scope}?utm_source=homescreen`]: '<title>Migraine Log</title> updated' };
+  const stored = new Map();
+  const cache = { addAll: async () => {}, put: async (key, response) => { stored.set(String(key), await response.text()); },
+    match: async key => (stored.has(key) ? new Response(stored.get(key)) : undefined) };
+  const listeners = {};
+  let online = true;
+  const worker = vm.createContext({ URL, Response, Promise,
+    self: { location: new URL(`${scope}sw.js`), registration: { scope }, addEventListener: (type, handler) => { listeners[type] = handler; } },
+    caches: { open: async () => cache, match: key => cache.match(key), keys: async () => [], delete: async () => true },
+    Request: class { constructor(input, init = {}) { Object.assign(this, typeof input === 'string' ? { url: input } : input, init); } },
+    fetch: async request => {
+      if (!online) throw new TypeError('Failed to fetch');
+      return new Response(pages[request.url] ?? 'Not found', { status: request.url in pages ? 200 : 404 });
+    } });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../sw.js'), 'utf8'), worker);
+  const navigate = async url => {
+    let response;
+    listeners.fetch({ request: { url, method: 'GET', mode: 'navigate' }, respondWith: value => { response = value; }, waitUntil() {} });
+    return (await response).text();
+  };
+  await navigate(scope);
+  await navigate(`${scope}robots.txt`);
+  assert.equal(stored.get('index.html'), '<title>Migraine Log</title>');
+  await navigate(`${scope}?utm_source=homescreen`);
+  assert.equal(stored.get('index.html'), '<title>Migraine Log</title> updated');
+  online = false;
+  assert.equal(await navigate(`${scope}robots.txt`), '<title>Migraine Log</title> updated');
+});
 test('a damaged backup reminder cannot crash or lock the diary', () => {
   const h = host({ 'migraine-log-meta-v1': '{"lastExportAt":"bad date","pending":-10}' });
   assert.equal(h.run('meta.lastExportAt'), null);
